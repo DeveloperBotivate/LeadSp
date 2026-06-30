@@ -12,22 +12,19 @@ const getTodayDate = () => {
 const getLeads = () => {
   const leads = JSON.parse(localStorage.getItem('pcb_planning')) || [];
 
-  if (leads.length > 0 && (!leads[0].woNo || !leads[0].buyer || leads[0].remarks?.includes('Dummy lead record') || leads[0].currentStage === undefined || leads.length !== 36)) {
-    localStorage.removeItem('pcb_planning');
-  } else if (leads.length > 0) {
+  // If there is already data (dummy or user-added), return it after patching missing fields
+  if (leads.length > 0) {
     let needsUpdate = false;
     const mapped = leads.map((l, i) => {
-      let changed = false;
       let newL = { ...l };
       if (!newL.productName) {
         newL.productName = `Product ${i + 1}`;
-        changed = true;
+        needsUpdate = true;
       }
       if (!newL.addedBy) {
         newL.addedBy = i % 2 === 0 ? 'Admin User' : 'Employee 1';
-        changed = true;
+        needsUpdate = true;
       }
-      if (changed) needsUpdate = true;
       return newL;
     });
     if (needsUpdate) {
@@ -37,6 +34,7 @@ const getLeads = () => {
     return leads;
   }
 
+  // No data at all — generate dummy data (marked with _isDummy flag)
   const dummyLeads = [];
   const baseDate = new Date();
 
@@ -60,6 +58,7 @@ const getLeads = () => {
         timestamp: new Date().toISOString(),
         addedBy: leadCounter % 2 === 0 ? 'Admin User' : 'Employee 1',
         currentStage: stg,
+        _isDummy: true,
         isHistory: leadCounter % 2 === 0, // Mock half as History
         // Mock history data if it is history
         ...(leadCounter % 2 === 0 ? {
@@ -106,16 +105,15 @@ const getLeads = () => {
 };
 
 const saveLead = (updatedLead) => {
-  const leads = getLeads();
+  const leads = JSON.parse(localStorage.getItem('pcb_planning')) || [];
   const index = leads.findIndex(l => l.id === updatedLead.id);
-  
+
   if (index !== -1) {
     leads[index] = updatedLead;
-    localStorage.setItem('pcb_planning', JSON.stringify(leads));
   } else {
     leads.push(updatedLead);
-    localStorage.setItem('pcb_planning', JSON.stringify(leads));
   }
+  localStorage.setItem('pcb_planning', JSON.stringify(leads));
 };
 const formatDate = (dateString) => {
   if (!dateString) return '-';
