@@ -26,16 +26,16 @@ const Sidebar = ({ isOpen, onClose }) => {
 
   const adminMenuItems = [
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
-    { path: '/add-lead', icon: Plus, label: 'All Lead' },
-    { path: '/dispatch', icon: TrendingDown, label: 'Dispatch' },
+    { path: '/all-enquiry', icon: Plus, label: 'All Enquiry' },
+    { path: '/planning', icon: TrendingDown, label: 'Planning' },
 
     { path: '/settings', icon: Settings, label: 'Settings' },
   ];
 
   const employeeMenuItems = [
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
-    { path: '/add-lead', icon: Plus, label: 'All Lead' },
-    { path: '/dispatch', icon: TrendingDown, label: 'Dispatch' },
+    { path: '/all-enquiry', icon: Plus, label: 'All Enquiry' },
+    { path: '/planning', icon: TrendingDown, label: 'Planning' },
   ];
 
   const menuItems = user?.role === 'ADMIN' ? adminMenuItems : employeeMenuItems;
@@ -59,7 +59,7 @@ const Sidebar = ({ isOpen, onClose }) => {
               <div className="w-9 h-9 flex items-center justify-center">
                 <img src={logo} alt="Logo" className="w-full h-full object-contain rounded-md shadow-sm" />
               </div>
-              <span className="text-xl font-bold text-sky-600 tracking-tight">Lead Managment</span>
+              <span className="text-xl font-bold text-sky-600 tracking-tight">Sample System</span>
             </div>
             <button onClick={onClose} className="lg:hidden p-2 hover:bg-sky-100 rounded-lg">
               <X size={20} className="text-sky-600" />

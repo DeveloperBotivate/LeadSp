@@ -4,8 +4,8 @@ import { Toaster } from 'react-hot-toast';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import AdminDashboard from './pages/AdminDashboard';
-import AddLead from './pages/AddLead';
-import Dispatch from './pages/Dispatch';
+import AllEnquiry from './pages/AllEnquiry';
+import Planning from './pages/Planning';
 import Settings from './pages/Settings';
 
 import ProtectedRoute from './components/ProtectedRoute';
@@ -46,8 +46,8 @@ function App() {
           }>
             <Route index element={<AdminDashboard />} />
             <Route path="dashboard" element={<AdminDashboard />} />
-            <Route path="add-lead" element={<AddLead />} />
-            <Route path="dispatch" element={<Dispatch />} />
+            <Route path="all-enquiry" element={<AllEnquiry />} />
+            <Route path="planning" element={<Planning />} />
             <Route path="settings" element={<Settings />} />
 
           </Route>

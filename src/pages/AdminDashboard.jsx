@@ -33,9 +33,16 @@ export default function AdminDashboard() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(15);
 
-  const leads = JSON.parse(localStorage.getItem('pcb_leads')) || [];
+  const [dashboardType, setDashboardType] = useState('enquiry'); // 'enquiry' | 'planning'
+  const [summaryGroup, setSummaryGroup] = useState('buyer'); // 'buyer' | 'user'
 
-
+  const leads = useMemo(() => {
+    if (dashboardType === 'enquiry') {
+      return JSON.parse(localStorage.getItem('pcb_leads')) || [];
+    } else {
+      return JSON.parse(localStorage.getItem('pcb_planning')) || [];
+    }
+  }, [dashboardType]);
 
   const filteredLeads = useMemo(() => {
     let filtered = leads.filter(l => {
@@ -75,11 +82,14 @@ export default function AdminDashboard() {
 
   // Calculate statistics based on filtered data
   const totalLeads = filteredLeads.length;
-  const pendingDispatch = filteredLeads.filter(l => !l.isDispatched).length;
-  const dispatchedLeads = filteredLeads.filter(l => l.isDispatched).length;
+  const pendingDispatch = filteredLeads.filter(l => dashboardType === 'enquiry' ? !l.isDispatched : !l.isHistory).length;
+  const dispatchedLeads = filteredLeads.filter(l => dashboardType === 'enquiry' ? l.isDispatched : l.isHistory).length;
   
   const todayDate = getTodayDate();
-  const leadsToday = filteredLeads.filter(l => l.receiptDate === todayDate).length;
+  const leadsToday = filteredLeads.filter(l => {
+    const dateField = dashboardType === 'enquiry' ? l.receiptDate : l.wResDate;
+    return dateField === todayDate;
+  }).length;
 
   // Paginated Leads
   const totalPages = Math.ceil(filteredLeads.length / itemsPerPage);
@@ -89,8 +99,12 @@ export default function AdminDashboard() {
   }, [filteredLeads, currentPage, itemsPerPage]);
 
   const handleDownloadCSV = () => {
-    const headers = ['SN', 'Receipt Date', 'Buyer Coder', 'Qty', 'Type', 'ETD', 'Status', 'Remarks'];
-    const rows = filteredLeads.map(l => [
+    const isEnquiry = dashboardType === 'enquiry';
+    const headers = isEnquiry 
+      ? ['SN', 'Receipt Date', 'Buyer Coder', 'Qty', 'Type', 'ETD', 'Status', 'Remarks']
+      : ['SN', 'W/RES Date', 'Buyer', 'Qty', 'Product Name', 'W/O No', 'Status', 'Remarks'];
+      
+    const rows = filteredLeads.map(l => isEnquiry ? [
       l.sn,
       formatDate(l.receiptDate),
       l.buyerCoder || '',
@@ -98,6 +112,15 @@ export default function AdminDashboard() {
       l.type || '',
       l.etd || '',
       l.isDispatched ? 'Dispatched' : 'Pending',
+      l.remarks || ''
+    ] : [
+      l.sn,
+      formatDate(l.wResDate),
+      l.buyer || '',
+      l.qty || '',
+      l.productName || '',
+      l.woNo || '',
+      l.isHistory ? 'History' : 'Pending',
       l.remarks || ''
     ]);
 
@@ -116,21 +139,92 @@ export default function AdminDashboard() {
 
   // Chart data - Leads by Type
   const leadsByType = useMemo(() => {
+    // Force HMR reload
+    console.log("AdminDashboard rendering, dashboardType:", dashboardType);
+    
     const typeData = {};
     filteredLeads.forEach(l => {
-      const type = l.type || 'Unknown';
+      const type = dashboardType === 'enquiry' ? (l.type || 'Unknown') : (l.productName || 'Unknown');
       if (!typeData[type]) {
         typeData[type] = 0;
       }
       typeData[type] += 1;
     });
     return typeData;
-  }, [filteredLeads]);
+  }, [filteredLeads, dashboardType]);
+
+  const summaryStats = useMemo(() => {
+    const stats = {};
+    filteredLeads.forEach(l => {
+      let groupKey = 'Unknown';
+      
+      if (summaryGroup === 'user') {
+        groupKey = l.addedBy || 'Unknown User';
+      } else {
+        groupKey = dashboardType === 'enquiry' ? (l.buyerCoder || 'Unknown Buyer') : (l.buyer || 'Unknown Buyer');
+      }
+      
+      if (!stats[groupKey]) {
+        stats[groupKey] = { name: groupKey, total: 0, completed: 0, delays: 0 };
+      }
+      
+      stats[groupKey].total += 1;
+      
+      if (dashboardType === 'enquiry') {
+        if (l.isDispatched) {
+          stats[groupKey].completed += 1;
+        }
+      } else {
+        if (l.isHistory) {
+          stats[groupKey].completed += 1;
+        }
+        
+        // Calculate delays
+        let delayCount = 0;
+        if (l.stages && Array.isArray(l.stages)) {
+          l.stages.forEach(stage => {
+            if (stage.plannedDate && stage.actualDate) {
+              const diffTime = new Date(stage.actualDate) - new Date(stage.plannedDate);
+              const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+              if (diffDays > 0) delayCount += 1;
+            }
+          });
+        } else {
+          // Fallback for dummy data format
+          for (let s = 1; s <= 8; s++) {
+            const stg = l[`stage${s}`];
+            if (stg && stg.status === 'Delayed') {
+              delayCount += 1;
+            }
+          }
+        }
+        stats[groupKey].delays += delayCount;
+      }
+    });
+    
+    return Object.values(stats).sort((a, b) => b.total - a.total);
+  }, [filteredLeads, dashboardType, summaryGroup]);
 
   return (
     <div className="p-0 sm:p-2 md:p-6 space-y-2 md:space-y-6 flex flex-col h-full md:h-auto overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+      {/* Dashboard Toggle */}
+      <div className="flex gap-2 bg-gray-100 p-1.5 rounded-lg w-max mb-2">
+        <button 
+          onClick={() => { setDashboardType('enquiry'); setCurrentPage(1); }} 
+          className={`px-6 py-2 text-sm font-semibold rounded-md transition-all ${dashboardType === 'enquiry' ? 'bg-white shadow-sm text-indigo-700' : 'text-gray-600 hover:text-indigo-600'}`}
+        >
+          Enquiry Dashboard
+        </button>
+        <button 
+          onClick={() => { setDashboardType('planning'); setCurrentPage(1); }} 
+          className={`px-6 py-2 text-sm font-semibold rounded-md transition-all ${dashboardType === 'planning' ? 'bg-white shadow-sm text-indigo-700' : 'text-gray-600 hover:text-indigo-600'}`}
+        >
+          Planning Dashboard
+        </button>
+      </div>
+
       {/* Header with Filters */}
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-2 lg:gap-4 w-full pb-2 border-b border-gray-100">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-2 lg:gap-4 w-full pb-2">
         <div className="flex flex-col lg:flex-row w-full gap-2 items-center">
           
           {/* Search + Export Row (Mobile grouping) */}
@@ -244,7 +338,7 @@ export default function AdminDashboard() {
         <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-6 border border-orange-200">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-600 text-sm font-medium">Pending Dispatch</p>
+              <p className="text-gray-600 text-sm font-medium">{dashboardType === 'enquiry' ? 'Pending Dispatch' : 'Pending Planning'}</p>
               <p className="text-2xl font-bold text-orange-700 mt-2">
                 {pendingDispatch}
               </p>
@@ -257,7 +351,7 @@ export default function AdminDashboard() {
         <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-lg p-6 border border-emerald-200">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-600 text-sm font-medium">Dispatched Leads</p>
+              <p className="text-gray-600 text-sm font-medium">{dashboardType === 'enquiry' ? 'Dispatched Leads' : 'History (Completed)'}</p>
               <p className="text-2xl font-bold text-emerald-700 mt-2">
                 {dispatchedLeads}
               </p>
@@ -307,11 +401,11 @@ export default function AdminDashboard() {
               <span className="font-bold text-indigo-600">{totalLeads}</span>
             </div>
             <div className="flex justify-between items-center pb-3 border-b border-gray-200">
-              <span className="text-gray-700">Awaiting Dispatch</span>
+              <span className="text-gray-700">{dashboardType === 'enquiry' ? 'Awaiting Dispatch' : 'Awaiting Planning'}</span>
               <span className="font-bold text-orange-600">{pendingDispatch}</span>
             </div>
             <div className="flex justify-between items-center pb-3 border-b border-gray-200">
-              <span className="text-gray-700">Successfully Dispatched</span>
+              <span className="text-gray-700">{dashboardType === 'enquiry' ? 'Successfully Dispatched' : 'Completed (History)'}</span>
               <span className="font-bold text-emerald-600">{dispatchedLeads}</span>
             </div>
             <div className="flex justify-between items-center pt-3">
@@ -324,11 +418,29 @@ export default function AdminDashboard() {
 
       {/* Leads Table */}
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm flex flex-col mt-4">
-        <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-          <h3 className="text-lg font-bold text-gray-900">Recent Leads Report</h3>
-          <span className="text-sm text-gray-500 font-medium whitespace-nowrap">
-            Showing {paginatedLeads.length} of {filteredLeads.length}
-          </span>
+        <div className="p-4 border-b border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-3 bg-gray-50/50">
+          <div>
+            <h3 className="text-lg font-bold text-gray-900">
+              {dashboardType === 'enquiry' ? 'Enquiry Summary' : 'Planning Summary'}
+            </h3>
+            <span className="text-sm text-gray-500 font-medium whitespace-nowrap">
+              Showing {summaryStats.length} {summaryGroup === 'user' ? 'Users' : 'Buyers'}
+            </span>
+          </div>
+          <div className="flex gap-2 bg-white border border-gray-200 p-1 rounded-lg">
+            <button 
+              onClick={() => setSummaryGroup('buyer')} 
+              className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${summaryGroup === 'buyer' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-gray-600 hover:text-indigo-600'}`}
+            >
+              Group by Buyer
+            </button>
+            <button 
+              onClick={() => setSummaryGroup('user')} 
+              className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${summaryGroup === 'user' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-gray-600 hover:text-indigo-600'}`}
+            >
+              Group by User
+            </button>
+          </div>
         </div>
 
         {/* Desktop Table View */}
@@ -336,29 +448,39 @@ export default function AdminDashboard() {
           <table className="w-full text-left border-collapse relative min-w-max">
             <thead className="bg-gray-50 text-gray-700 text-[11px] font-bold uppercase tracking-wider border-b border-gray-200 sticky top-0 z-10 shadow-sm">
               <tr>
-                <th className="px-4 py-3">SN</th>
-                <th className="px-4 py-3">Receipt Date</th>
-                <th className="px-4 py-3">Buyer Coder</th>
-                <th className="px-4 py-3 text-center">Qty</th>
-                <th className="px-4 py-3">Type</th>
-                <th className="px-4 py-3 text-center">Status</th>
+                {dashboardType === 'enquiry' ? (
+                  <>
+                    <th className="px-4 py-3">{summaryGroup === 'user' ? 'User Name' : 'Buyer Name'}</th>
+                    <th className="px-4 py-3 text-center">Total Enquiry</th>
+                    <th className="px-4 py-3 text-center">Dispatched</th>
+                    <th className="px-4 py-3 text-center">Pending</th>
+                  </>
+                ) : (
+                  <>
+                    <th className="px-4 py-3">{summaryGroup === 'user' ? 'User Name' : 'Buyer Name'}</th>
+                    <th className="px-4 py-3 text-center">Total Planning</th>
+                    <th className="px-4 py-3 text-center">Complete</th>
+                    <th className="px-4 py-3 text-center">Delays (Stages)</th>
+                  </>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {paginatedLeads.map((l) => (
-                <tr key={l.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3 text-sm font-bold text-indigo-600">{l.sn}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{formatDate(l.receiptDate)}</td>
-                  <td className="px-4 py-3 text-sm font-semibold text-gray-900">{l.buyerCoder}</td>
-                  <td className="px-4 py-3 text-sm font-semibold text-sky-700 text-center bg-sky-50">{l.qty}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{l.type}</td>
-                  <td className="px-4 py-3 text-center">
-                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                      l.isDispatched ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'
-                    }`}>
-                      {l.isDispatched ? 'Dispatched' : 'Pending'}
-                    </span>
-                  </td>
+              {summaryStats.map((item, idx) => (
+                <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-4 py-3 text-sm font-bold text-gray-900">{item.name}</td>
+                  <td className="px-4 py-3 text-sm font-semibold text-indigo-700 text-center bg-indigo-50/50">{item.total}</td>
+                  {dashboardType === 'enquiry' ? (
+                    <>
+                      <td className="px-4 py-3 text-sm font-semibold text-emerald-700 text-center bg-emerald-50/50">{item.completed}</td>
+                      <td className="px-4 py-3 text-sm font-semibold text-orange-700 text-center bg-orange-50/50">{item.total - item.completed}</td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="px-4 py-3 text-sm font-semibold text-emerald-700 text-center bg-emerald-50/50">{item.completed}</td>
+                      <td className="px-4 py-3 text-sm font-semibold text-red-700 text-center bg-red-50/50">{item.delays}</td>
+                    </>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -367,35 +489,34 @@ export default function AdminDashboard() {
 
         {/* Mobile Card View */}
         <div className="md:hidden flex flex-col gap-2 p-2 bg-slate-50/50 pb-2">
-          {paginatedLeads.map((l) => (
-            <div key={l.id} className="bg-white rounded-lg border border-indigo-50 shadow-[0_2px_10px_-4px_rgba(79,70,229,0.1)] p-3 relative flex flex-col gap-2 transition-all">
-              <div className="flex justify-between items-start border-b border-slate-100 pb-2">
-                <div>
-                  <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest block leading-none mb-1">{l.sn}</span>
-                  <h3 className="font-bold text-gray-900 text-sm leading-tight">
-                    {l.buyerCoder}
-                  </h3>
-                </div>
-                <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest ${
-                  l.isDispatched ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'
-                }`}>
-                  {l.isDispatched ? 'Dispatched' : 'Pending'}
-                </span>
+          {summaryStats.map((item, idx) => (
+            <div key={idx} className="bg-white rounded-lg border border-indigo-50 shadow-[0_2px_10px_-4px_rgba(79,70,229,0.1)] p-3 relative flex flex-col gap-2 transition-all">
+              <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                <h3 className="font-bold text-gray-900 text-sm leading-tight">
+                  {item.name}
+                </h3>
               </div>
               
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div>
-                   <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Type</span>
-                   <span className="font-medium text-gray-800">{l.type}</span>
+              <div className="grid grid-cols-3 gap-2 text-xs text-center">
+                <div className="bg-indigo-50/50 p-1.5 rounded">
+                   <span className="text-gray-500 block text-[9px] uppercase tracking-wide mb-1">Total {dashboardType === 'enquiry' ? 'Enquiry' : 'Planning'}</span>
+                   <span className="font-bold text-indigo-700">{item.total}</span>
                 </div>
-                <div>
-                   <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Receipt Date</span>
-                   <span className="font-medium text-gray-800">{formatDate(l.receiptDate)}</span>
+                <div className="bg-emerald-50/50 p-1.5 rounded">
+                   <span className="text-gray-500 block text-[9px] uppercase tracking-wide mb-1">{dashboardType === 'enquiry' ? 'Dispatched' : 'Complete'}</span>
+                   <span className="font-bold text-emerald-700">{item.completed}</span>
                 </div>
-                <div>
-                   <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Qty</span>
-                   <span className="font-medium text-gray-800">{l.qty}</span>
-                </div>
+                {dashboardType === 'enquiry' ? (
+                  <div className="bg-orange-50/50 p-1.5 rounded">
+                     <span className="text-gray-500 block text-[9px] uppercase tracking-wide mb-1">Pending</span>
+                     <span className="font-bold text-orange-700">{item.total - item.completed}</span>
+                  </div>
+                ) : (
+                  <div className="bg-red-50/50 p-1.5 rounded">
+                     <span className="text-gray-500 block text-[9px] uppercase tracking-wide mb-1">Delays</span>
+                     <span className="font-bold text-red-700">{item.delays}</span>
+                  </div>
+                )}
               </div>
             </div>
           ))}

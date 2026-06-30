@@ -70,8 +70,7 @@ const Login = () => {
               />
             </div>
             <div className="text-center space-y-2">
-              <h1 className="text-4xl font-bold text-gray-900">Lead Managment</h1>
-              <p className="text-gray-600 text-base font-medium">Management System</p>
+              <h1 className="text-4xl font-bold text-gray-900">Sample System</h1>
             </div>
           </div>
 
