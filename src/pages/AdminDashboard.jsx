@@ -656,28 +656,28 @@ export default function AdminDashboard() {
             </div>
             
             {/* Modal Content */}
-            <div className="p-6 overflow-y-auto">
-              <div className="grid grid-cols-2 gap-4 mb-8">
+            <div className="p-4 md:p-5 overflow-y-auto">
+              <div className="grid grid-cols-2 gap-3 mb-5">
                 <div>
-                  <p className="text-sm text-gray-500 font-medium">Buyer Name</p>
-                  <p className="font-semibold text-gray-900">{selectedLeadDetails.buyer || '-'}</p>
+                  <p className="text-xs text-gray-500 font-medium">Buyer Name</p>
+                  <p className="font-semibold text-gray-900 text-sm">{selectedLeadDetails.buyer || '-'}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500 font-medium">Product Name</p>
-                  <p className="font-semibold text-gray-900">{selectedLeadDetails.productName || '-'}</p>
+                  <p className="text-xs text-gray-500 font-medium">Product Name</p>
+                  <p className="font-semibold text-gray-900 text-sm">{selectedLeadDetails.productName || '-'}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500 font-medium">W/O No</p>
-                  <p className="font-semibold text-gray-900">{selectedLeadDetails.woNo || '-'}</p>
+                  <p className="text-xs text-gray-500 font-medium">W/O No</p>
+                  <p className="font-semibold text-gray-900 text-sm">{selectedLeadDetails.woNo || '-'}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500 font-medium">Quantity</p>
-                  <p className="font-semibold text-gray-900">{selectedLeadDetails.qty || '-'}</p>
+                  <p className="text-xs text-gray-500 font-medium">Quantity</p>
+                  <p className="font-semibold text-gray-900 text-sm">{selectedLeadDetails.qty || '-'}</p>
                 </div>
               </div>
 
-              <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 pb-2 border-b border-gray-100">Stage Progress</h4>
-              <div className="space-y-4">
+              <h4 className="text-[11px] font-bold text-gray-900 uppercase tracking-wider mb-3 pb-2 border-b border-gray-100">Stage Progress</h4>
+              <div className="space-y-2">
                 {STAGES_LIST.map((stageName, index) => {
                   const stageNum = index + 1;
                   const stg = selectedLeadDetails[`stage${stageNum}`];
@@ -700,19 +700,19 @@ export default function AdminDashboard() {
                   }
 
                   return (
-                    <div key={index} className="flex items-start justify-between p-3 rounded-lg border border-gray-100 bg-gray-50/50">
+                    <div key={index} className="flex items-start justify-between py-2 px-3 rounded-lg border border-gray-100 bg-gray-50/50">
                       <div className="flex-1">
-                        <p className="font-semibold text-gray-900 text-sm">{stageNum}. {stageName}</p>
+                        <p className="font-semibold text-gray-900 text-xs">{stageNum}. {stageName}</p>
                         {stg?.remarks && (
-                          <p className="text-xs text-gray-500 mt-1">{stg.remarks}</p>
+                          <p className="text-[10px] text-gray-500 mt-0.5">{stg.remarks}</p>
                         )}
                       </div>
                       <div className="flex flex-col items-end gap-1 ml-4">
-                        <span className={`px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${statusColor}`}>
+                        <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${statusColor}`}>
                           {statusText}
                         </span>
                         {stg?.actualDate && (
-                          <span className="text-xs text-gray-400">{formatDate(stg.actualDate)}</span>
+                          <span className="text-[10px] text-gray-400">{formatDate(stg.actualDate)}</span>
                         )}
                       </div>
                     </div>
