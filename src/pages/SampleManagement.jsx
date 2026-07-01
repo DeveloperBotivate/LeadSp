@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { Plus, Search, ChevronLeft, ChevronRight, X, Calendar, Edit2, Trash2, Filter } from 'lucide-react';
+import DraggableScroll from '../components/DraggableScroll';
 const formatDate = (dateString) => {
   if (!dateString) return '-';
   const date = new Date(dateString);
@@ -14,7 +15,7 @@ const getTodayDate = () => {
 const getLeads = () => {
   let leads = JSON.parse(localStorage.getItem('pcb_leads')) || [];
 
-  if (leads.length > 0 && (!leads[0].buyerCoder || leads[0].remarks?.includes('Dummy production plan') || (leads[0].remarks?.includes('Dummy lead record') && !leads[0].remarks?.includes('v2')))) {
+  if (leads.length > 0 && (!leads[0].buyerCoder || leads[0].remarks?.includes('Dummy production plan') || (leads[0].remarks?.includes('Dummy lead record') && !leads[0].remarks?.includes('v3')))) {
     leads = [];
     localStorage.removeItem('pcb_leads');
   }
@@ -49,25 +50,41 @@ const getLeads = () => {
     const dummyLeads = [];
     const baseDate = new Date();
     const types = ['Only Sample', 'Only Costing', 'Leather Development', 'Material Development', 'General Info'];
-    for (let i = 0; i < 15; i++) {
-      const dateObj = new Date(baseDate.getTime() - ((15 - i) * 86400000));
+    const buyers = ['BUYER-01', 'BUYER-02', 'BUYER-03', 'BUYER-04'];
+    
+    for (let i = 0; i < 20; i++) {
+      const dateObj = new Date(baseDate.getTime() - ((20 - i) * 86400000));
       const compDateObj = new Date(baseDate.getTime() + (i * 86400000));
-      dummyLeads.push({
+      
+      const isHistory = i % 3 === 0; // Every 3rd lead goes to history
+      
+      const lead = {
         id: `LEAD-${Date.now()}-${i}`,
         sn: `SN-${(i + 1).toString().padStart(3, '0')}`,
         receiptDate: dateObj.toISOString().split('T')[0],
-        buyerCoder: `BUYER${100 + i}`,
+        buyerCoder: buyers[i % buyers.length],
         productName: `Product ${i + 1}`,
         qty: `${(i + 1) * 50}`,
         type: types[i % types.length],
         requirementDate: dateObj.toISOString().split('T')[0],
-        sampleWONo: `100${i}`,
-        sampleWODate: dateObj.toISOString().split('T')[0],
-        completionDate: compDateObj.toISOString().split('T')[0],
-        remarks: `Dummy lead record v2 ${i + 1}`,
+        completionDate: isHistory ? compDateObj.toISOString().split('T')[0] : '',
+        remarks: `Dummy lead record v3 ${i + 1}`,
         timestamp: new Date().toISOString(),
         addedBy: i % 2 === 0 ? 'Admin User' : 'Employee 1'
-      });
+      };
+
+      if (isHistory) {
+        lead.isFollowedUp = true;
+        lead.followUpTimestamp = new Date().toISOString();
+        lead.buyerCommitmentDate = dateObj.toISOString().split('T')[0];
+        lead.sampleWONo = `WO-${1000 + i}`;
+        lead.sampleWODate = dateObj.toISOString().split('T')[0];
+        lead.sampleWOHandoverDate = compDateObj.toISOString().split('T')[0];
+        lead.expectedCompletionDate = compDateObj.toISOString().split('T')[0];
+        lead.dispatchSentDate = compDateObj.toISOString().split('T')[0];
+      }
+
+      dummyLeads.push(lead);
     }
     localStorage.setItem('pcb_leads', JSON.stringify(dummyLeads));
     return dummyLeads;
@@ -86,7 +103,7 @@ const saveLead = (lead) => {
   localStorage.setItem('pcb_leads', JSON.stringify(leads));
 };
 
-export default function AllEnquiry() {
+export default function SampleManagement() {
   const [leads, setLeads] = useState(getLeads());
   const [showFormModal, setShowFormModal] = useState(false);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
@@ -182,8 +199,8 @@ export default function AllEnquiry() {
     setSelectedLead(lead);
     setFollowUpFormData({
       buyerCommitmentDate: '',
-      sampleWONo: lead.sampleWONo || '',
-      sampleWODate: lead.sampleWODate || '',
+      sampleWONo: '',
+      sampleWODate: '',
       sampleWOHandoverDate: '',
       expectedCompletionDate: '',
       dispatchSentDate: getTodayDate()
@@ -246,28 +263,26 @@ export default function AllEnquiry() {
       <div className="flex flex-col xl:flex-row items-start xl:items-center gap-2 xl:gap-3 w-full pb-2">
         
         {/* Tabs as Buttons */}
-        <div className="flex gap-2 w-full xl:w-auto flex-shrink-0">
-          <button
-            onClick={() => setActiveTab('pending')}
-            className={`flex-1 xl:flex-none px-6 text-xs md:text-sm font-semibold rounded-lg transition-all h-[32px] md:h-[38px] ${
-              activeTab === 'pending'
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'
-            }`}
-          >
-            Pending
-          </button>
-          <button
-            onClick={() => setActiveTab('history')}
-            className={`flex-1 xl:flex-none px-6 text-xs md:text-sm font-semibold rounded-lg transition-all h-[32px] md:h-[38px] ${
-              activeTab === 'history'
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'
-            }`}
-          >
-            History
-          </button>
-        </div>
+        <button
+          onClick={() => setActiveTab('pending')}
+          className={`w-full lg:w-auto px-6 text-xs md:text-sm font-semibold rounded-lg transition-all h-[32px] md:h-[38px] ${
+            activeTab === 'pending'
+              ? 'bg-indigo-600 text-white shadow-sm'
+              : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'
+          }`}
+        >
+          Pending
+        </button>
+        <button
+          onClick={() => setActiveTab('history')}
+          className={`w-full lg:w-auto px-6 text-xs md:text-sm font-semibold rounded-lg transition-all h-[32px] md:h-[38px] ${
+            activeTab === 'history'
+              ? 'bg-indigo-600 text-white shadow-sm'
+              : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'
+          }`}
+        >
+          History
+        </button>
         
         {/* Search & Mobile Add & Filter */}
         <div className="flex items-center gap-2 w-full lg:w-auto lg:flex-[1.5]">
@@ -317,18 +332,6 @@ export default function AllEnquiry() {
             onChange={(e) => setFilters({ ...filters, toDate: e.target.value })}
             className="w-full bg-white border border-gray-300 rounded-lg lg:rounded px-2 py-1.5 focus:outline-none focus:border-indigo-500 text-[11px] md:text-sm h-[32px] md:h-[38px]"
           />
-          <select
-            value={filters.type}
-            onChange={(e) => setFilters({ ...filters, type: e.target.value })}
-            className="w-full bg-white border border-gray-300 rounded-lg lg:rounded px-2 py-1.5 focus:outline-none focus:border-indigo-500 text-[11px] md:text-sm h-[32px] md:h-[38px] col-span-2 lg:col-span-1"
-          >
-            <option value="">All Types</option>
-            <option value="Only Sample">Only Sample</option>
-            <option value="Only Costing">Only Costing</option>
-            <option value="Leather Development">Leather Development</option>
-            <option value="Material Development">Material Development</option>
-            <option value="General Info">General Info</option>
-          </select>
         </div>
 
         {/* Desktop Add Button */}
@@ -337,7 +340,7 @@ export default function AllEnquiry() {
              onClick={handleOpenAddModal}
              className="hidden lg:flex bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 h-[38px] rounded-lg font-semibold items-center justify-center gap-2 transition shadow-sm w-full lg:w-auto flex-shrink-0 whitespace-nowrap"
           >
-            <Plus size={16} /> Add Enquiry
+            <Plus size={16} /> Add Sample
           </button>
         )}
       </div>
@@ -347,7 +350,7 @@ export default function AllEnquiry() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex flex-col items-center justify-center z-50 p-2 md:p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[95vh] md:max-h-[90vh] flex flex-col overflow-hidden">
             <div className="p-3 md:p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 flex-shrink-0">
-              <h2 className="text-base md:text-lg font-bold text-gray-900">New Enquiry</h2>
+              <h2 className="text-base md:text-lg font-bold text-gray-900">New Sample</h2>
               <button type="button" onClick={() => setShowFormModal(false)} className="text-gray-400 hover:text-red-500 transition-colors">
                 <X size={20} className="md:w-6 md:h-6" />
               </button>
@@ -434,28 +437,6 @@ export default function AllEnquiry() {
                     />
                   </div>
 
-                  {/* Sample W/O No */}
-                  <div>
-                    <label className="block text-[11px] md:text-sm font-medium text-gray-700 mb-0.5 md:mb-1">Sample W/O No</label>
-                    <input
-                      type="number"
-                      value={formData.sampleWONo}
-                      onChange={(e) => setFormData({ ...formData, sampleWONo: e.target.value })}
-                      placeholder="e.g. 12345"
-                      className="w-full border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-[11px] md:text-sm bg-white min-h-[30px] md:min-h-[38px]"
-                    />
-                  </div>
-
-                  {/* Sample W/O Date */}
-                  <div>
-                    <label className="block text-[11px] md:text-sm font-medium text-gray-700 mb-0.5 md:mb-1">Sample W/O Date</label>
-                    <input
-                      type="date"
-                      value={formData.sampleWODate}
-                      onChange={(e) => setFormData({ ...formData, sampleWODate: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-[11px] md:text-sm bg-white min-h-[30px] md:min-h-[38px]"
-                    />
-                  </div>
 
                   {/* Actual Completion Date */}
                   <div>
@@ -736,7 +717,7 @@ export default function AllEnquiry() {
         </div>
 
         {/* Desktop View: Table */}
-        <div className="hidden md:block overflow-x-auto overflow-y-auto flex-1 min-h-0 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+        <DraggableScroll className="hidden md:block flex-1 min-h-0">
           <table className="w-full min-w-[900px] relative">
             <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10 shadow-sm">
               <tr>
@@ -749,11 +730,11 @@ export default function AllEnquiry() {
                 <th className="px-4 py-3 text-center text-sm font-semibold text-gray-900 whitespace-nowrap">Qty</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Type</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Requirement Date</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Sample W/O No</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Sample W/O Date</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Actual Completion Date</th>
                 {activeTab === 'history' && (
                   <>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Sample W/O No</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Sample W/O Date</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Buyer Commitment Date</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Handover Date (NPD)</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Expected Completion Date</th>
@@ -784,11 +765,11 @@ export default function AllEnquiry() {
                   <td className="px-4 py-3 text-center text-sm font-semibold text-sky-700 bg-sky-50">{lead.qty}</td>
                   <td className="px-4 py-3 text-left text-sm text-gray-700">{lead.type}</td>
                   <td className="px-4 py-3 text-left text-sm text-gray-700">{formatDate(lead.requirementDate)}</td>
-                  <td className="px-4 py-3 text-left text-sm text-gray-700">{lead.sampleWONo || '-'}</td>
-                  <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{lead.sampleWODate ? formatDate(lead.sampleWODate) : '-'}</td>
                   <td className="px-4 py-3 text-left text-sm font-medium text-emerald-600 whitespace-nowrap">{lead.completionDate ? formatDate(lead.completionDate) : '-'}</td>
                   {activeTab === 'history' && (
                     <>
+                      <td className="px-4 py-3 text-left text-sm text-gray-700">{lead.sampleWONo || '-'}</td>
+                      <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{lead.sampleWODate ? formatDate(lead.sampleWODate) : '-'}</td>
                       <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{formatDate(lead.buyerCommitmentDate)}</td>
                       <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{formatDate(lead.sampleWOHandoverDate)}</td>
                       <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{formatDate(lead.expectedCompletionDate)}</td>
@@ -806,7 +787,7 @@ export default function AllEnquiry() {
               No leads found.
             </div>
           )}
-        </div>
+        </DraggableScroll>
 
         {/* Footer & Pagination Controls */}
         <div className="px-2 md:px-4 py-2 border-t border-gray-200 bg-gray-50 flex items-center justify-between gap-2 md:gap-4 rounded-b-lg pb-2 md:pb-3">

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { Plus, Search, ChevronLeft, ChevronRight, X, Calendar, Edit2, Trash2, Filter } from 'lucide-react';
+import DraggableScroll from '../components/DraggableScroll';
 
 // ==========================================
 // LOCAL STORAGE & DUMMY DATA LOGIC
@@ -10,7 +11,12 @@ const getTodayDate = () => {
 };
 
 const getLeads = () => {
-  const leads = JSON.parse(localStorage.getItem('pcb_planning')) || [];
+  let leads = JSON.parse(localStorage.getItem('pcb_planning')) || [];
+
+  if (leads.length > 0 && leads[0]._isDummy && !leads[0]._v4) {
+    leads = [];
+    localStorage.removeItem('pcb_planning');
+  }
 
   // If there is already data (dummy or user-added), return it after patching missing fields
   if (leads.length > 0) {
@@ -38,66 +44,66 @@ const getLeads = () => {
   const dummyLeads = [];
   const baseDate = new Date();
 
-  let leadCounter = 1;
-  for (let stg = 0; stg <= 11; stg++) {
-    for (let i = 0; i < 3; i++) {
-      const dateObj = new Date(baseDate.getTime() - ((40 - leadCounter) * 86400000));
-      const compDateObj = new Date(baseDate.getTime() + (leadCounter * 86400000));
+  for (let i = 0; i < 20; i++) {
+    const leadCounter = i + 1;
+    const stg = (i % 8) + 1; // Cycle through 1 to 8 stages
 
-      const lead = {
-        id: `PLAN-${Date.now()}-${leadCounter}`,
-        sn: `SN-${leadCounter.toString().padStart(3, '0')}`,
-        buyer: `BUYER-${100 + leadCounter}`,
-        productName: `Product ${leadCounter}`,
-        woNo: `WO-${1000 + leadCounter}`,
-        wResDate: dateObj.toISOString().split('T')[0],
-        woDate: dateObj.toISOString().split('T')[0],
-        woDespatchDate: compDateObj.toISOString().split('T')[0],
-        qty: `${(i + 1) * 50}`,
-        remarks: `Dummy production plan ${leadCounter}`,
-        timestamp: new Date().toISOString(),
-        addedBy: leadCounter % 2 === 0 ? 'Admin User' : 'Employee 1',
-        currentStage: stg,
-        _isDummy: true,
-        isHistory: leadCounter % 2 === 0, // Mock half as History
-        // Mock history data if it is history
-        ...(leadCounter % 2 === 0 ? {
-          handoverDate: compDateObj.toISOString().split('T')[0],
-          leatherInHouseDate: compDateObj.toISOString().split('T')[0],
-          materialsInHouseDate: compDateObj.toISOString().split('T')[0],
-          packingMaterialsInHouseDate: compDateObj.toISOString().split('T')[0],
-          fabricationCompletionDate: compDateObj.toISOString().split('T')[0],
-          qaCompletedBy: 'QA Team',
-          daysNeededForPacking: '5',
-          plannedShipmentDate: compDateObj.toISOString().split('T')[0],
-          planningOk: 'OK',
-          prodOtdDelayed: 'OTD',
-          shippedReady: 'READY',
-          historyRemarks: 'Completed successfully'
-        } : {})
+    const dateObj = new Date(baseDate.getTime() - ((40 - leadCounter) * 86400000));
+    const compDateObj = new Date(baseDate.getTime() + (leadCounter * 86400000));
+
+    const lead = {
+      id: `PLAN-${Date.now()}-${leadCounter}`,
+      sn: `SN-${leadCounter.toString().padStart(3, '0')}`,
+      buyer: `BUYER-${100 + leadCounter}`,
+      productName: `Product ${leadCounter}`,
+      woNo: `WO-${1000 + leadCounter}`,
+      wResDate: dateObj.toISOString().split('T')[0],
+      woDate: dateObj.toISOString().split('T')[0],
+      woDespatchDate: compDateObj.toISOString().split('T')[0],
+      qty: `${(i + 1) * 50}`,
+      remarks: `Dummy production plan ${leadCounter}`,
+      timestamp: new Date().toISOString(),
+      addedBy: leadCounter % 2 === 0 ? 'Admin User' : 'Employee 1',
+      currentStage: stg,
+      _isDummy: true,
+      _v4: true,
+      isHistory: leadCounter % 2 === 0, // Mock half as History
+      // Mock history data if it is history
+      ...(leadCounter % 2 === 0 ? {
+        handoverDate: compDateObj.toISOString().split('T')[0],
+        leatherInHouseDate: compDateObj.toISOString().split('T')[0],
+        materialsInHouseDate: compDateObj.toISOString().split('T')[0],
+        packingMaterialsInHouseDate: compDateObj.toISOString().split('T')[0],
+        fabricationCompletionDate: compDateObj.toISOString().split('T')[0],
+        qaCompletedBy: 'QA Team',
+        daysNeededForPacking: '5',
+        plannedShipmentDate: compDateObj.toISOString().split('T')[0],
+        planningOk: 'OK',
+        prodOtdDelayed: 'OTD',
+        shippedReady: 'READY',
+        historyRemarks: 'Completed successfully'
+      } : {})
+    };
+
+    for (let s = 1; s <= stg; s++) {
+      lead[`stage${s}`] = {
+        actualDate: compDateObj.toISOString().split('T')[0],
+        status: s < stg ? 'Completed' : (leadCounter % 2 === 0 ? 'Completed' : 'Delayed'),
+        remarks: `Stage ${s} completed successfully`,
+        timestamp: new Date().toISOString()
       };
 
-      for (let s = 1; s <= stg; s++) {
+      if (s === 8) {
         lead[`stage${s}`] = {
           actualDate: compDateObj.toISOString().split('T')[0],
-          status: leadCounter % 2 === 0 ? 'Completed' : 'Delayed',
+          dayNeed: `Need ${i + 1} days`,
           remarks: `Stage ${s} completed successfully`,
           timestamp: new Date().toISOString()
         };
-
-        if (s === 8) {
-          lead[`stage${s}`] = {
-            actualDate: compDateObj.toISOString().split('T')[0],
-            dayNeed: `Need ${i + 1} days`,
-            remarks: `Stage ${s} completed successfully`,
-            timestamp: new Date().toISOString()
-          };
-        }
       }
-
-      dummyLeads.push(lead);
-      leadCounter++;
     }
+
+    dummyLeads.push(lead);
   }
 
   localStorage.setItem('pcb_planning', JSON.stringify(dummyLeads));
@@ -130,7 +136,7 @@ const getTimeDelay = (planned, actual) => {
   return 'On time';
 };
 
-export default function ProductionPlanning() {
+export default function BulkOrder() {
   const [activeTab, setActiveTab] = useState('pending');
   const [leads, setLeads] = useState(getLeads());
   const [showFormModal, setShowFormModal] = useState(false);
@@ -310,29 +316,27 @@ export default function ProductionPlanning() {
       {/* Header Row: Filters + Add Button */}
       <div className="flex flex-col lg:flex-row items-start lg:items-center gap-2 lg:gap-3 w-full pb-2 border-b border-gray-100">
 
-        {/* Tabs */}
-        <div className="flex bg-gray-100/80 p-1 rounded-lg w-full lg:w-auto flex-shrink-0 border border-gray-200/60">
-          <button
-            onClick={() => { setActiveTab('pending'); setCurrentPage(1); }}
-            className={`flex-1 lg:flex-none px-6 py-1.5 rounded-md text-sm font-semibold transition-all duration-200 ${
-              activeTab === 'pending'
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200/50'
-            }`}
-          >
-            Pending
-          </button>
-          <button
-            onClick={() => { setActiveTab('history'); setCurrentPage(1); }}
-            className={`flex-1 lg:flex-none px-6 py-1.5 rounded-md text-sm font-semibold transition-all duration-200 ${
-              activeTab === 'history'
-                ? 'bg-white text-gray-900 shadow-sm border border-gray-200/50'
-                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200/50'
-            }`}
-          >
-            History
-          </button>
-        </div>
+        {/* Tabs as Buttons */}
+        <button
+          onClick={() => { setActiveTab('pending'); setCurrentPage(1); }}
+          className={`w-full lg:w-auto px-6 py-1.5 rounded-lg text-sm font-semibold transition-all h-[32px] md:h-[38px] ${
+            activeTab === 'pending'
+              ? 'bg-indigo-600 text-white shadow-sm'
+              : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'
+          }`}
+        >
+          Pending
+        </button>
+        <button
+          onClick={() => { setActiveTab('history'); setCurrentPage(1); }}
+          className={`w-full lg:w-auto px-6 py-1.5 rounded-lg text-sm font-semibold transition-all h-[32px] md:h-[38px] ${
+            activeTab === 'history'
+              ? 'bg-indigo-600 text-white shadow-sm'
+              : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'
+          }`}
+        >
+          History
+        </button>
 
         {/* Search & Mobile Add & Filter */}
         <div className="flex items-center gap-2 w-full lg:w-auto lg:flex-[1.5]">
@@ -389,7 +393,7 @@ export default function ProductionPlanning() {
           onClick={handleOpenAddModal}
           className="hidden lg:flex bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 h-[38px] rounded-lg font-semibold items-center justify-center gap-2 transition shadow-sm w-full lg:w-auto flex-shrink-0 whitespace-nowrap"
         >
-          <Plus size={16} /> Planning
+          <Plus size={16} /> Add Bulk Order
         </button>
       </div>
 
@@ -398,7 +402,7 @@ export default function ProductionPlanning() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex flex-col items-center justify-center z-50 p-2 md:p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[95vh] md:max-h-[90vh] flex flex-col overflow-hidden">
             <div className="p-3 md:p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 flex-shrink-0">
-              <h2 className="text-base md:text-lg font-bold text-gray-900">Add Planning Entry</h2>
+              <h2 className="text-base md:text-lg font-bold text-gray-900">Add Bulk Order Entry</h2>
               <button type="button" onClick={() => setShowFormModal(false)} className="text-gray-400 hover:text-red-500 transition-colors">
                 <X size={20} className="md:w-6 md:h-6" />
               </button>
@@ -535,7 +539,7 @@ export default function ProductionPlanning() {
             <div className="p-4 md:p-6 overflow-y-auto flex-1">
               {/* Read Only Details */}
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
-                <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Planning Details</h3>
+                <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Bulk Order Details</h3>
                 <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 text-sm">
                   <div><span className="text-gray-500 block text-[10px] uppercase">Buyer</span><span className="font-medium">{selectedLead.buyer || '-'}</span></div>
                   <div><span className="text-gray-500 block text-[10px] uppercase">Product Name</span><span className="font-medium">{selectedLead.productName || '-'}</span></div>
@@ -711,7 +715,7 @@ export default function ProductionPlanning() {
         </div>
 
         {/* Desktop View: Table */}
-        <div className="hidden md:block overflow-x-auto overflow-y-auto flex-1 min-h-0 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+        <DraggableScroll className="hidden md:block flex-1 min-h-0">
           <table className="w-full min-w-[900px] relative">
             <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10 shadow-sm">
               <tr>
@@ -767,7 +771,7 @@ export default function ProductionPlanning() {
               No records found.
             </div>
           )}
-        </div>
+        </DraggableScroll>
 
         {/* Footer & Pagination Controls */}
         <div className="px-2 md:px-4 py-2 border-t border-gray-200 bg-gray-50 flex items-center justify-between gap-2 md:gap-4 rounded-b-lg pb-2 md:pb-3">

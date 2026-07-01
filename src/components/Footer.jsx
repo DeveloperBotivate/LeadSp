@@ -5,7 +5,7 @@ const Footer = () => {
         <>
             {/* Original Footer */}
             <footer className="fixed bottom-0 left-0 lg:left-56 right-0 py-3 md:py-2 border-t border-sky-200 bg-white shadow-[0_-2px_10px_rgba(0,0,0,0.05)] z-50">
-                <div className="max-w-7xl mx-auto px-4 text-center">
+                <div className="w-full max-w-full mx-auto px-4 text-center">
                     <p className="text-[13px] md:text-sm font-bold md:font-medium text-sky-700">
                         Powered By <a 
                             href="https://www.botivate.in" 

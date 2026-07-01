@@ -28,7 +28,7 @@ const Layout = () => {
         />
 
         <main className="flex-1 flex flex-col p-2 sm:p-2 lg:p-2 overflow-hidden pb-[50px] md:pb-0 relative z-0 min-h-0">
-          <div className="max-w-7xl mx-auto w-full flex-1 flex flex-col animate-in fade-in duration-500 min-h-0 md:mb-[35px]">
+          <div className="w-full max-w-full mx-auto flex-1 flex flex-col animate-in fade-in duration-500 min-h-0 md:mb-[35px]">
             <Outlet />
           </div>
         </main>

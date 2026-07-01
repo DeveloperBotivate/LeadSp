@@ -26,16 +26,16 @@ const Sidebar = ({ isOpen, onClose }) => {
 
   const adminMenuItems = [
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
-    { path: '/all-enquiry', icon: Plus, label: 'All Enquiry' },
-    { path: '/planning', icon: TrendingDown, label: 'Planning' },
+    { path: '/sample-management', icon: Plus, label: 'Sample Management' },
+    { path: '/bulk-order', icon: TrendingDown, label: 'Bulk Production Order' },
 
     { path: '/settings', icon: Settings, label: 'Settings' },
   ];
 
   const employeeMenuItems = [
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
-    { path: '/all-enquiry', icon: Plus, label: 'All Enquiry' },
-    { path: '/planning', icon: TrendingDown, label: 'Planning' },
+    { path: '/sample-management', icon: Plus, label: 'Sample Management' },
+    { path: '/bulk-order', icon: TrendingDown, label: 'Bulk Production Order' },
   ];
 
   const menuItems = user?.role === 'ADMIN' ? adminMenuItems : employeeMenuItems;
