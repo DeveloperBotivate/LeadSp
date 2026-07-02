@@ -15,7 +15,7 @@ const getTodayDate = () => {
 const getLeads = () => {
   let leads = JSON.parse(localStorage.getItem('pcb_leads')) || [];
 
-  if (leads.length > 0 && (!leads[0].buyerCoder || leads[0].remarks?.includes('Dummy production plan') || (leads[0].remarks?.includes('Dummy lead record') && !leads[0].remarks?.includes('v3')))) {
+  if (leads.length > 0 && (!leads[0]._v8 || leads[0].remarks?.includes('Dummy'))) {
     leads = [];
     localStorage.removeItem('pcb_leads');
   }
@@ -38,6 +38,10 @@ const getLeads = () => {
         l.addedBy = i % 2 === 0 ? 'Admin User' : 'Employee 1';
         changed = true;
       }
+      if (!l.sampleWONo && l.remarks?.includes('Dummy')) {
+        l.sampleWONo = `WO-${1000 + i}`;
+        changed = true;
+      }
       if (changed) needsUpdate = true;
       return l;
     });
@@ -49,26 +53,27 @@ const getLeads = () => {
   if (leads.length === 0) {
     const dummyLeads = [];
     const baseDate = new Date();
-    const types = ['Only Sample', 'Only Costing', 'Leather Development', 'Material Development', 'General Info'];
+    const types = ['Select','Only Sample', 'Only Costing', 'Leather Development', 'Material Development', 'General Info'];
     const buyers = ['BUYER-01', 'BUYER-02', 'BUYER-03', 'BUYER-04'];
     
-    for (let i = 0; i < 20; i++) {
-      const dateObj = new Date(baseDate.getTime() - ((20 - i) * 86400000));
+    for (let i = 0; i < 10; i++) {
+      const dateObj = new Date(baseDate.getTime() - ((10 - i) * 86400000));
       const compDateObj = new Date(baseDate.getTime() + (i * 86400000));
       
       const isHistory = i % 3 === 0; // Every 3rd lead goes to history
       
       const lead = {
         id: `LEAD-${Date.now()}-${i}`,
-        sn: `SN-${(i + 1).toString().padStart(3, '0')}`,
         receiptDate: dateObj.toISOString().split('T')[0],
         buyerCoder: buyers[i % buyers.length],
         productName: `Product ${i + 1}`,
         qty: `${(i + 1) * 50}`,
         type: types[i % types.length],
         requirementDate: dateObj.toISOString().split('T')[0],
+        sampleWONo: `WO-${1000 + i}`,
         completionDate: isHistory ? compDateObj.toISOString().split('T')[0] : '',
-        remarks: `Dummy lead record v3 ${i + 1}`,
+        _v8: true,
+        remarks: `Dummy lead record v8 ${i + 1}`,
         timestamp: new Date().toISOString(),
         addedBy: i % 2 === 0 ? 'Admin User' : 'Employee 1'
       };
@@ -76,8 +81,6 @@ const getLeads = () => {
       if (isHistory) {
         lead.isFollowedUp = true;
         lead.followUpTimestamp = new Date().toISOString();
-        lead.buyerCommitmentDate = dateObj.toISOString().split('T')[0];
-        lead.sampleWONo = `WO-${1000 + i}`;
         lead.sampleWODate = dateObj.toISOString().split('T')[0];
         lead.sampleWOHandoverDate = compDateObj.toISOString().split('T')[0];
         lead.expectedCompletionDate = compDateObj.toISOString().split('T')[0];
@@ -116,12 +119,10 @@ export default function SampleManagement() {
   const [showFollowUpModal, setShowFollowUpModal] = useState(false);
   const [selectedLead, setSelectedLead] = useState(null);
   const [followUpFormData, setFollowUpFormData] = useState({
-    buyerCommitmentDate: '',
-    sampleWONo: '',
     sampleWODate: '',
     sampleWOHandoverDate: '',
     expectedCompletionDate: '',
-    dispatchSentDate: getTodayDate()
+    dispatchSentDate: ''
   });
 
   const currentUser = JSON.parse(localStorage.getItem('pcb_authUser')) || { name: 'Unknown User' };
@@ -136,7 +137,7 @@ export default function SampleManagement() {
     buyerCoder: '',
     productName: '',
     qty: '',
-    type: 'Only Sample',
+    type: '',
     requirementDate: '',
     sampleWONo: '',
     sampleWODate: '',
@@ -149,8 +150,8 @@ export default function SampleManagement() {
   }, [searchQuery, filters, activeTab]);
 
   const currentStatusLeads = leads.filter(l => {
-    if (activeTab === 'pending') return !l.isFollowedUp;
-    return l.isFollowedUp;
+    if (activeTab === 'pending') return !l.dispatchSentDate;
+    return !!l.dispatchSentDate;
   });
 
   const filteredLeads = currentStatusLeads.filter(l => {
@@ -161,7 +162,7 @@ export default function SampleManagement() {
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       return (
-        (l.sn && l.sn.toLowerCase().includes(q)) ||
+        (l.sampleWONo && l.sampleWONo.toLowerCase().includes(q)) ||
         (l.buyerCoder && l.buyerCoder.toLowerCase().includes(q)) ||
         (l.productName && l.productName.toLowerCase().includes(q)) ||
         (l.type && l.type.toLowerCase().includes(q)) ||
@@ -185,7 +186,7 @@ export default function SampleManagement() {
       buyerCoder: '',
       productName: '',
       qty: '',
-      type: 'Only Sample',
+      type: '',
       requirementDate: '',
       sampleWONo: '',
       sampleWODate: '',
@@ -198,12 +199,10 @@ export default function SampleManagement() {
   const handleOpenFollowUp = (lead) => {
     setSelectedLead(lead);
     setFollowUpFormData({
-      buyerCommitmentDate: '',
-      sampleWONo: '',
-      sampleWODate: '',
-      sampleWOHandoverDate: '',
-      expectedCompletionDate: '',
-      dispatchSentDate: getTodayDate()
+      sampleWODate: lead.sampleWODate || '',
+      sampleWOHandoverDate: lead.sampleWOHandoverDate || '',
+      expectedCompletionDate: lead.expectedCompletionDate || '',
+      dispatchSentDate: lead.dispatchSentDate || ''
     });
     setShowFollowUpModal(true);
   };
@@ -227,24 +226,13 @@ export default function SampleManagement() {
 
   const handleSaveLead = (e) => {
     e.preventDefault();
-    if (!formData.buyerCoder.trim() || !formData.qty.trim() || !formData.requirementDate.trim()) {
-      toast.error('Please fill required fields (Buyer Coder, Qty, Requirement Date)');
+    if (!formData.sampleWONo.trim() || !formData.buyerCoder.trim() || !formData.qty.trim() || !formData.requirementDate.trim() || !formData.type) {
+      toast.error('Please fill required fields (Sample W/O No, Buyer Code, Qty, Type, Requirement Date)');
       return;
-    }
-
-    let nextSnNum = 1;
-    if (leads.length > 0) {
-      const lastSn = leads[leads.length - 1].sn;
-      if (lastSn && lastSn.startsWith('SN-')) {
-        nextSnNum = parseInt(lastSn.split('-')[1], 10) + 1;
-      } else {
-        nextSnNum = leads.length + 1;
-      }
     }
 
     const newLead = {
       id: `LEAD-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      sn: `SN-${nextSnNum.toString().padStart(3, '0')}`,
       ...formData,
       timestamp: new Date().toISOString(),
       addedBy: currentUser.name
@@ -358,6 +346,19 @@ export default function SampleManagement() {
             <div className="p-4 md:p-6 overflow-y-auto flex-1">
               <form onSubmit={handleSaveLead} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Sample W/O No */}
+                  <div>
+                    <label className="block text-[11px] md:text-sm font-medium text-gray-700 mb-0.5 md:mb-1">Sample W/O No *</label>
+                    <input
+                      type="text"
+                      value={formData.sampleWONo}
+                      onChange={(e) => setFormData({ ...formData, sampleWONo: e.target.value })}
+                      placeholder="e.g. WO-1234"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-[11px] md:text-sm bg-white min-h-[30px] md:min-h-[38px]"
+                      required
+                    />
+                  </div>
+
                   {/* Enquiry Receipt Date */}
                   <div>
                     <label className="block text-[11px] md:text-sm font-medium text-gray-700 mb-0.5 md:mb-1">Enquiry Receipt Date *</label>
@@ -370,9 +371,9 @@ export default function SampleManagement() {
                     />
                   </div>
                   
-                  {/* Buyer Coder */}
+                  {/* Buyer Code */}
                   <div>
-                    <label className="block text-[11px] md:text-sm font-medium text-gray-700 mb-0.5 md:mb-1">Buyer Coder *</label>
+                    <label className="block text-[11px] md:text-sm font-medium text-gray-700 mb-0.5 md:mb-1">Buyer Code *</label>
                     <input
                       type="text"
                       value={formData.buyerCoder}
@@ -383,9 +384,9 @@ export default function SampleManagement() {
                     />
                   </div>
 
-                  {/* Product Name */}
+                  {/* Description of Enquiry */}
                   <div>
-                    <label className="block text-[11px] md:text-sm font-medium text-gray-700 mb-0.5 md:mb-1">Product Name *</label>
+                    <label className="block text-[11px] md:text-sm font-medium text-gray-700 mb-0.5 md:mb-1">Description of Enquiry *</label>
                     <input
                       type="text"
                       value={formData.productName}
@@ -416,7 +417,9 @@ export default function SampleManagement() {
                       value={formData.type}
                       onChange={(e) => setFormData({ ...formData, type: e.target.value })}
                       className="w-full border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-[11px] md:text-sm bg-white min-h-[30px] md:min-h-[38px]"
+                      required
                     >
+                      <option value="" disabled>Select Type</option>
                       <option value="Only Sample">Only Sample</option>
                       <option value="Only Costing">Only Costing</option>
                       <option value="Leather Development">Leather Development</option>
@@ -437,18 +440,6 @@ export default function SampleManagement() {
                     />
                   </div>
 
-
-                  {/* Actual Completion Date */}
-                  <div>
-                    <label className="block text-[11px] md:text-sm font-medium text-gray-700 mb-0.5 md:mb-1">Actual Completion Date</label>
-                    <input
-                      type="date"
-                      value={formData.completionDate}
-                      onChange={(e) => setFormData({ ...formData, completionDate: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-[11px] md:text-sm bg-white min-h-[30px] md:min-h-[38px]"
-                    />
-                  </div>
-                  
                   {/* Remarks */}
                   <div className="md:col-span-2">
                     <label className="block text-[11px] md:text-sm font-medium text-gray-700 mb-0.5 md:mb-1">Remarks</label>
@@ -481,7 +472,7 @@ export default function SampleManagement() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex flex-col items-center justify-center z-50 p-2 md:p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[95vh] md:max-h-[90vh] flex flex-col overflow-hidden">
             <div className="p-3 md:p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 flex-shrink-0">
-              <h2 className="text-base md:text-lg font-bold text-gray-900">Follow Up Lead {selectedLead.sn}</h2>
+              <h2 className="text-base md:text-lg font-bold text-gray-900">Update Lead {selectedLead.sampleWONo}</h2>
               <button type="button" onClick={() => setShowFollowUpModal(false)} className="text-gray-400 hover:text-red-500 transition-colors">
                 <X size={20} className="md:w-6 md:h-6" />
               </button>
@@ -494,19 +485,19 @@ export default function SampleManagement() {
                   <h3 className="text-xs font-semibold text-gray-800 mb-2 border-b pb-1">Lead Information (Read Only)</h3>
                   <div className="grid grid-cols-3 md:grid-cols-4 gap-3 text-[11px]">
                     <div>
-                      <span className="block text-gray-400 mb-0.5 text-[9px] uppercase">Serial No</span>
-                      <span className="font-semibold text-indigo-600">{selectedLead.sn}</span>
+                      <span className="block text-gray-400 mb-0.5 text-[9px] uppercase">Sample W/O No</span>
+                      <span className="font-semibold text-indigo-600">{selectedLead.sampleWONo}</span>
                     </div>
                     <div>
                       <span className="block text-gray-400 mb-0.5 text-[9px] uppercase">Receipt Date</span>
                       <span className="font-medium text-gray-900">{formatDate(selectedLead.receiptDate)}</span>
                     </div>
                     <div>
-                      <span className="block text-gray-400 mb-0.5 text-[9px] uppercase">Buyer Coder</span>
+                      <span className="block text-gray-400 mb-0.5 text-[9px] uppercase">Buyer Code</span>
                       <span className="font-medium text-gray-900">{selectedLead.buyerCoder}</span>
                     </div>
                     <div>
-                      <span className="block text-gray-400 mb-0.5 text-[9px] uppercase">Product Name</span>
+                      <span className="block text-gray-400 mb-0.5 text-[9px] uppercase">Description of Enquiry</span>
                       <span className="font-medium text-gray-900">{selectedLead.productName || '-'}</span>
                     </div>
                     <div>
@@ -521,10 +512,7 @@ export default function SampleManagement() {
                       <span className="block text-gray-400 mb-0.5 text-[9px] uppercase">Req Date</span>
                       <span className="font-medium text-gray-900">{formatDate(selectedLead.requirementDate)}</span>
                     </div>
-                    <div>
-                      <span className="block text-gray-400 mb-0.5 text-[9px] uppercase">Completion Date</span>
-                      <span className="font-medium text-emerald-600">{selectedLead.completionDate ? formatDate(selectedLead.completionDate) : '-'}</span>
-                    </div>
+
                     <div className="col-span-3 md:col-span-4 border-t border-gray-100 pt-2 mt-1">
                       <span className="block text-gray-400 mb-0.5 text-[9px] uppercase">Remarks</span>
                       <span className="font-medium text-gray-700">{selectedLead.remarks || '-'}</span>
@@ -534,30 +522,9 @@ export default function SampleManagement() {
 
                 {/* Follow Up Input Fields */}
                 <div className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm">
-                  <h3 className="text-xs font-semibold text-indigo-800 mb-3 border-b pb-1">Follow Up Details</h3>
+                  <h3 className="text-xs font-semibold text-indigo-800 mb-3 border-b pb-1">Update Details</h3>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     
-                    <div>
-                      <label className="block text-[10px] md:text-xs font-medium text-gray-700 mb-0.5">Buyer Commitment Date</label>
-                      <input
-                        type="date"
-                        value={followUpFormData.buyerCommitmentDate}
-                        onChange={(e) => setFollowUpFormData({ ...followUpFormData, buyerCommitmentDate: e.target.value })}
-                        className="w-full border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-[11px] md:text-xs bg-white h-[30px] md:h-[34px]"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] md:text-xs font-medium text-gray-700 mb-0.5">Sample W/O No</label>
-                      <input
-                        type="text"
-                        value={followUpFormData.sampleWONo}
-                        onChange={(e) => setFollowUpFormData({ ...followUpFormData, sampleWONo: e.target.value })}
-                        placeholder="Enter W/O Number"
-                        className="w-full border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-[11px] md:text-xs bg-white h-[30px] md:h-[34px]"
-                      />
-                    </div>
-
                     <div>
                       <label className="block text-[10px] md:text-xs font-medium text-gray-700 mb-0.5">Sample W/O Date</label>
                       <input
@@ -589,7 +556,7 @@ export default function SampleManagement() {
                     </div>
 
                     <div>
-                      <label className="block text-[10px] md:text-xs font-medium text-gray-700 mb-0.5">Dispatch/Sent Date</label>
+                      <label className="block text-[10px] md:text-xs font-medium text-gray-700 mb-0.5">Dispatch/Sent/Close/Date</label>
                       <input
                         type="date"
                         value={followUpFormData.dispatchSentDate}
@@ -602,7 +569,7 @@ export default function SampleManagement() {
 
                 <div className="flex gap-2 pt-2">
                   <button type="submit" className="flex-1 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white font-semibold py-2 px-6 rounded-lg hover:from-indigo-600 hover:to-indigo-700 transition shadow-sm text-sm flex items-center justify-center gap-2">
-                    Save Follow Up
+                    Save Updates
                   </button>
                   <button type="button" onClick={() => setShowFollowUpModal(false)} className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition font-medium text-sm bg-white">
                     Cancel
@@ -623,7 +590,7 @@ export default function SampleManagement() {
             <div key={lead.id} className="bg-white rounded-lg border border-indigo-50 shadow-[0_2px_10px_-4px_rgba(79,70,229,0.1)] p-2.5 relative flex flex-col gap-2 transition-all">
               <div className="flex justify-between items-start border-b border-slate-100 pb-2">
                 <div>
-                  <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest block leading-none mb-1">{lead.sn}</span>
+                  <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest block leading-none mb-1">{lead.sampleWONo}</span>
                   <h3 className="font-bold text-gray-900 text-sm leading-tight">
                     {lead.buyerCoder}
                   </h3>
@@ -637,7 +604,7 @@ export default function SampleManagement() {
               
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div>
-                   <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Product</span>
+                   <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Description of Enquiry</span>
                    <span className="font-medium text-gray-800">{lead.productName || '-'}</span>
                 </div>
                 <div>
@@ -656,16 +623,9 @@ export default function SampleManagement() {
                    <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Added By</span>
                    <span className="font-medium text-indigo-600">{lead.addedBy || '-'}</span>
                 </div>
-                <div>
-                   <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Completion</span>
-                   <span className="font-medium text-emerald-600">{lead.completionDate ? formatDate(lead.completionDate) : '-'}</span>
-                </div>
+
                 {activeTab === 'history' && (
                   <>
-                    <div>
-                      <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Buyer Comm.</span>
-                      <span className="font-medium text-gray-800">{formatDate(lead.buyerCommitmentDate)}</span>
-                    </div>
                     <div>
                       <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Sample W/O Date</span>
                       <span className="font-medium text-gray-800">{formatDate(lead.sampleWODate)}</span>
@@ -682,10 +642,10 @@ export default function SampleManagement() {
                 )}
               </div>
               
-              {lead.sampleWONo && (
+              {lead.sampleWODate && (
                 <div className="mt-1 pt-2 border-t border-gray-50 text-xs">
-                  <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Sample W/O No & Date</span>
-                  <span className="text-gray-700 font-medium">{lead.sampleWONo} ({formatDate(lead.sampleWODate)})</span>
+                  <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Sample W/O Date</span>
+                  <span className="text-gray-700 font-medium">{formatDate(lead.sampleWODate)}</span>
                 </div>
               )}
 
@@ -722,23 +682,21 @@ export default function SampleManagement() {
             <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10 shadow-sm">
               <tr>
                 {activeTab === 'pending' && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 w-24 whitespace-nowrap">Action</th>}
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Serial No</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Sample W/O No</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Enquiry Receipt Date</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Added By</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Buyer Coder</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Product Name</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Buyer Code</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Description of Enquiry</th>
                 <th className="px-4 py-3 text-center text-sm font-semibold text-gray-900 whitespace-nowrap">Qty</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Type</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Requirement Date</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Actual Completion Date</th>
+
                 {activeTab === 'history' && (
                   <>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Sample W/O No</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Sample W/O Date</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Buyer Commitment Date</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Handover Date (NPD)</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Expected Completion Date</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Dispatch/Sent Date</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Dispatch/Sent/Close/Date</th>
                   </>
                 )}
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 max-w-[200px]">Remarks</th>
@@ -757,7 +715,7 @@ export default function SampleManagement() {
                       </button>
                     </td>
                   )}
-                  <td className="px-4 py-3 text-left text-sm text-indigo-600 font-bold">{lead.sn}</td>
+                  <td className="px-4 py-3 text-left text-sm text-indigo-600 font-bold">{lead.sampleWONo}</td>
                   <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{formatDate(lead.receiptDate)}</td>
                   <td className="px-4 py-3 text-left text-sm text-gray-700 font-semibold">{lead.addedBy || '-'}</td>
                   <td className="px-4 py-3 text-left text-sm text-gray-900 font-medium">{lead.buyerCoder}</td>
@@ -765,12 +723,10 @@ export default function SampleManagement() {
                   <td className="px-4 py-3 text-center text-sm font-semibold text-sky-700 bg-sky-50">{lead.qty}</td>
                   <td className="px-4 py-3 text-left text-sm text-gray-700">{lead.type}</td>
                   <td className="px-4 py-3 text-left text-sm text-gray-700">{formatDate(lead.requirementDate)}</td>
-                  <td className="px-4 py-3 text-left text-sm font-medium text-emerald-600 whitespace-nowrap">{lead.completionDate ? formatDate(lead.completionDate) : '-'}</td>
+
                   {activeTab === 'history' && (
                     <>
-                      <td className="px-4 py-3 text-left text-sm text-gray-700">{lead.sampleWONo || '-'}</td>
                       <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{lead.sampleWODate ? formatDate(lead.sampleWODate) : '-'}</td>
-                      <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{formatDate(lead.buyerCommitmentDate)}</td>
                       <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{formatDate(lead.sampleWOHandoverDate)}</td>
                       <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{formatDate(lead.expectedCompletionDate)}</td>
                       <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{formatDate(lead.dispatchSentDate)}</td>

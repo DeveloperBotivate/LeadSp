@@ -13,7 +13,8 @@ const getTodayDate = () => {
 const getLeads = () => {
   let leads = JSON.parse(localStorage.getItem('pcb_planning')) || [];
 
-  if (leads.length > 0 && leads[0]._isDummy && !leads[0]._v4) {
+  // Aggressively wipe old cache due to data model changes
+  if (leads.length > 0 && !leads[0]._v8) {
     leads = [];
     localStorage.removeItem('pcb_planning');
   }
@@ -23,10 +24,6 @@ const getLeads = () => {
     let needsUpdate = false;
     const mapped = leads.map((l, i) => {
       let newL = { ...l };
-      if (!newL.productName) {
-        newL.productName = `Product ${i + 1}`;
-        needsUpdate = true;
-      }
       if (!newL.addedBy) {
         newL.addedBy = i % 2 === 0 ? 'Admin User' : 'Employee 1';
         needsUpdate = true;
@@ -44,7 +41,7 @@ const getLeads = () => {
   const dummyLeads = [];
   const baseDate = new Date();
 
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < 10; i++) {
     const leadCounter = i + 1;
     const stg = (i % 8) + 1; // Cycle through 1 to 8 stages
 
@@ -53,9 +50,7 @@ const getLeads = () => {
 
     const lead = {
       id: `PLAN-${Date.now()}-${leadCounter}`,
-      sn: `SN-${leadCounter.toString().padStart(3, '0')}`,
       buyer: `BUYER-${100 + leadCounter}`,
-      productName: `Product ${leadCounter}`,
       woNo: `WO-${1000 + leadCounter}`,
       wResDate: dateObj.toISOString().split('T')[0],
       woDate: dateObj.toISOString().split('T')[0],
@@ -66,7 +61,7 @@ const getLeads = () => {
       addedBy: leadCounter % 2 === 0 ? 'Admin User' : 'Employee 1',
       currentStage: stg,
       _isDummy: true,
-      _v4: true,
+      _v8: true,
       isHistory: leadCounter % 2 === 0, // Mock half as History
       // Mock history data if it is history
       ...(leadCounter % 2 === 0 ? {
@@ -195,10 +190,9 @@ export default function BulkOrder() {
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       return (
-        (l.sn && l.sn.toLowerCase().includes(q)) ||
+        (l.woNo && l.woNo.toLowerCase().includes(q)) ||
         (l.buyer && l.buyer.toLowerCase().includes(q)) ||
         (l.productName && l.productName.toLowerCase().includes(q)) ||
-        (l.woNo && l.woNo.toLowerCase().includes(q)) ||
         (l.remarks && l.remarks.toLowerCase().includes(q))
       );
     }
@@ -215,7 +209,6 @@ export default function BulkOrder() {
   const handleOpenAddModal = () => {
     setFormData({
       buyer: '',
-      productName: '',
       woNo: '',
       wResDate: getTodayDate(),
       woDate: getTodayDate(),
@@ -228,24 +221,13 @@ export default function BulkOrder() {
 
   const handleSaveLead = (e) => {
     e.preventDefault();
-    if (!formData.buyer.trim() || !formData.woNo.trim() || !formData.qty.trim()) {
-      toast.error('Please fill required fields (Buyer, W/O No, Quantity)');
+    if (!formData.woNo.trim() || !formData.buyer.trim() || !formData.qty.trim()) {
+      toast.error('Please fill required fields (W/O No, Buyer, Quantity)');
       return;
-    }
-
-    let nextSnNum = 1;
-    if (leads.length > 0) {
-      const lastSn = leads[leads.length - 1].sn;
-      if (lastSn && lastSn.startsWith('SN-')) {
-        nextSnNum = parseInt(lastSn.split('-')[1], 10) + 1;
-      } else {
-        nextSnNum = leads.length + 1;
-      }
     }
 
     const newLead = {
       id: `PLAN-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      sn: `SN-${nextSnNum.toString().padStart(3, '0')}`,
       ...formData,
       timestamp: new Date().toISOString(),
       addedBy: currentUser.name,
@@ -306,8 +288,66 @@ export default function BulkOrder() {
     if (allStagesComplete && !selectedLead.isHistory) {
       toast.success(`All stages complete! ${selectedLead.sn} moved to History.`);
     } else {
-      toast.success(`Update saved for ${selectedLead.sn}.`);
+      toast.success(`Update saved for ${selectedLead.woNo}.`);
     }
+  };
+
+  const getShipmentDisplay = (lead) => {
+    let isActuallyShipped = false;
+    let actualShipmentDate = null;
+    
+    if (lead.stages && lead.stages.length >= 8) {
+      const shipmentStage = lead.stages[7]; // 8th stage is Planned Shipment
+      if (shipmentStage && shipmentStage.actualDate) {
+        isActuallyShipped = true;
+        actualShipmentDate = shipmentStage.actualDate;
+      }
+    }
+
+    if (isActuallyShipped || lead.isHistory) {
+      return {
+        date: actualShipmentDate || lead.woDespatchDate,
+        colorClass: "text-green-700 font-bold",
+        rowClass: "bg-green-50/70 hover:bg-green-100",
+        isActual: true
+      };
+    }
+
+    if (!lead.woDespatchDate) {
+      return { date: null, colorClass: "text-gray-700", rowClass: "bg-white hover:bg-gray-50", isActual: false };
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const shipmentDate = new Date(lead.woDespatchDate);
+    shipmentDate.setHours(0, 0, 0, 0);
+
+    const diffDays = Math.ceil((shipmentDate - today) / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) {
+      return {
+        date: lead.woDespatchDate,
+        colorClass: "text-red-700 font-bold",
+        rowClass: "bg-red-50/70 hover:bg-red-100",
+        isActual: false
+      };
+    }
+
+    if (diffDays >= 0 && diffDays <= 5) {
+      return {
+        date: lead.woDespatchDate,
+        colorClass: "text-orange-700 font-bold",
+        rowClass: "bg-orange-50/70 hover:bg-orange-100",
+        isActual: false
+      };
+    }
+
+    return {
+      date: lead.woDespatchDate,
+      colorClass: "text-gray-900 font-medium",
+      rowClass: "bg-white hover:bg-gray-50",
+      isActual: false
+    };
   };
 
   return (
@@ -393,7 +433,7 @@ export default function BulkOrder() {
           onClick={handleOpenAddModal}
           className="hidden lg:flex bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 h-[38px] rounded-lg font-semibold items-center justify-center gap-2 transition shadow-sm w-full lg:w-auto flex-shrink-0 whitespace-nowrap"
         >
-          <Plus size={16} /> Add Bulk Order
+          <Plus size={16} /> Add Order
         </button>
       </div>
 
@@ -402,7 +442,7 @@ export default function BulkOrder() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex flex-col items-center justify-center z-50 p-2 md:p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[95vh] md:max-h-[90vh] flex flex-col overflow-hidden">
             <div className="p-3 md:p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 flex-shrink-0">
-              <h2 className="text-base md:text-lg font-bold text-gray-900">Add Bulk Order Entry</h2>
+              <h2 className="text-base md:text-lg font-bold text-gray-900">Add Order Entry</h2>
               <button type="button" onClick={() => setShowFormModal(false)} className="text-gray-400 hover:text-red-500 transition-colors">
                 <X size={20} className="md:w-6 md:h-6" />
               </button>
@@ -410,31 +450,6 @@ export default function BulkOrder() {
             <div className="p-4 md:p-6 overflow-y-auto flex-1">
               <form onSubmit={handleSaveLead} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-                  {/* Buyer */}
-                  <div>
-                    <label className="block text-[11px] md:text-sm font-medium text-gray-700 mb-0.5 md:mb-1">Buyer *</label>
-                    <input
-                      type="text"
-                      value={formData.buyer}
-                      onChange={(e) => setFormData({ ...formData, buyer: e.target.value })}
-                      placeholder="e.g. BUYER01 (Alphanumeric)"
-                      className="w-full border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-[11px] md:text-sm bg-white min-h-[30px] md:min-h-[38px]"
-                      required
-                    />
-                  </div>
-
-                  {/* Product Name */}
-                  <div>
-                    <label className="block text-[11px] md:text-sm font-medium text-gray-700 mb-0.5 md:mb-1">Product Name</label>
-                    <input
-                      type="text"
-                      value={formData.productName}
-                      onChange={(e) => setFormData({ ...formData, productName: e.target.value })}
-                      placeholder="e.g. Product 1"
-                      className="w-full border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-[11px] md:text-sm bg-white min-h-[30px] md:min-h-[38px]"
-                    />
-                  </div>
 
                   {/* W/O No */}
                   <div>
@@ -449,9 +464,22 @@ export default function BulkOrder() {
                     />
                   </div>
 
+                  {/* Buyer */}
+                  <div>
+                    <label className="block text-[11px] md:text-sm font-medium text-gray-700 mb-0.5 md:mb-1">Buyer Code *</label>
+                    <input
+                      type="text"
+                      value={formData.buyer}
+                      onChange={(e) => setFormData({ ...formData, buyer: e.target.value })}
+                      placeholder="e.g. BUYER01 (Alphanumeric)"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-[11px] md:text-sm bg-white min-h-[30px] md:min-h-[38px]"
+                      required
+                    />
+                  </div>
+
                   {/* W/RES Date */}
                   <div>
-                    <label className="block text-[11px] md:text-sm font-medium text-gray-700 mb-0.5 md:mb-1">W/RES Date *</label>
+                    <label className="block text-[11px] md:text-sm font-medium text-gray-700 mb-0.5 md:mb-1">W/O Rec Date *</label>
                     <input
                       type="date"
                       value={formData.wResDate}
@@ -475,7 +503,7 @@ export default function BulkOrder() {
 
                   {/* W/O Despatch Date */}
                   <div>
-                    <label className="block text-[11px] md:text-sm font-medium text-gray-700 mb-0.5 md:mb-1">W/O Despatch Date *</label>
+                    <label className="block text-[11px] md:text-sm font-medium text-gray-700 mb-0.5 md:mb-1">W/O Shipment Date *</label>
                     <input
                       type="date"
                       value={formData.woDespatchDate}
@@ -530,7 +558,7 @@ export default function BulkOrder() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex flex-col items-center justify-center z-50 p-2 md:p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[95vh] md:max-h-[90vh] flex flex-col overflow-hidden">
             <div className="p-3 md:p-4 border-b border-gray-200 flex justify-between items-center bg-indigo-50 flex-shrink-0">
-              <h2 className="text-base md:text-lg font-bold text-indigo-900">Update - {selectedLead.sn}</h2>
+              <h2 className="text-base md:text-lg font-bold text-indigo-900">Update - {selectedLead.woNo}</h2>
               <button type="button" onClick={() => setShowFollowUpModal(false)} className="text-gray-400 hover:text-red-500 transition-colors">
                 <X size={20} className="md:w-6 md:h-6" />
               </button>
@@ -541,13 +569,12 @@ export default function BulkOrder() {
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
                 <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Bulk Order Details</h3>
                 <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 text-sm">
-                  <div><span className="text-gray-500 block text-[10px] uppercase">Buyer</span><span className="font-medium">{selectedLead.buyer || '-'}</span></div>
-                  <div><span className="text-gray-500 block text-[10px] uppercase">Product Name</span><span className="font-medium">{selectedLead.productName || '-'}</span></div>
-                  <div><span className="text-gray-500 block text-[10px] uppercase">W/O No</span><span className="font-medium">{selectedLead.woNo || '-'}</span></div>
+                  <div><span className="text-gray-500 block text-[10px] uppercase">W/O No</span><span className="font-medium text-indigo-600 font-bold">{selectedLead.woNo || '-'}</span></div>
+                  <div><span className="text-gray-500 block text-[10px] uppercase">Buyer Code</span><span className="font-medium">{selectedLead.buyer || '-'}</span></div>
                   <div><span className="text-gray-500 block text-[10px] uppercase">Quantity</span><span className="font-medium">{selectedLead.qty || '-'}</span></div>
-                  <div><span className="text-gray-500 block text-[10px] uppercase">W/RES Date</span><span className="font-medium">{formatDate(selectedLead.wResDate)}</span></div>
+                  <div><span className="text-gray-500 block text-[10px] uppercase">W/O Rec Date</span><span className="font-medium">{formatDate(selectedLead.wResDate)}</span></div>
                   <div><span className="text-gray-500 block text-[10px] uppercase">W/O Date</span><span className="font-medium">{formatDate(selectedLead.woDate)}</span></div>
-                  <div><span className="text-gray-500 block text-[10px] uppercase">W/O Despatch</span><span className="font-medium">{formatDate(selectedLead.woDespatchDate)}</span></div>
+                  <div><span className="text-gray-500 block text-[10px] uppercase">W/O Shipment</span><span className="font-medium">{formatDate(selectedLead.woDespatchDate)}</span></div>
                   <div className="col-span-3 md:col-span-4 lg:col-span-5"><span className="text-gray-500 block text-[9px] uppercase">Remarks</span><span className="font-medium text-gray-700 text-xs">{selectedLead.remarks || '-'}</span></div>
                 </div>
               </div>
@@ -640,24 +667,19 @@ export default function BulkOrder() {
         {/* Mobile View: Cards */}
         <div className="md:hidden flex flex-col gap-2 p-2 overflow-y-auto flex-1 bg-slate-50/50 pb-2">
           {paginatedLeads.map((lead) => (
-            <div key={lead.id} className="bg-white rounded-lg border border-indigo-50 shadow-[0_2px_10px_-4px_rgba(79,70,229,0.1)] p-2.5 relative flex flex-col gap-2 transition-all">
+            <div key={lead.id} className={`${getShipmentDisplay(lead).rowClass.split(' ')[0]} rounded-lg border border-indigo-50 shadow-[0_2px_10px_-4px_rgba(79,70,229,0.1)] p-2.5 relative flex flex-col gap-2 transition-all`}>
               <div className="flex justify-between items-start border-b border-slate-100 pb-2">
                 <div>
-                  <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest block leading-none mb-1">{lead.sn}</span>
+                  <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest block leading-none mb-1">{lead.woNo}</span>
                   <h3 className="font-bold text-gray-900 text-sm leading-tight">
                     {lead.buyer}
                   </h3>
                 </div>
                 <div className="text-right flex flex-col gap-1 items-end">
                   {activeTab === 'pending' && (
-                    <div className="flex gap-1">
-                      <button onClick={() => handleOpenFollowUp(lead)} className="px-2 py-1 bg-indigo-50 text-indigo-600 rounded text-[10px] font-bold uppercase hover:bg-indigo-100 transition shadow-sm border border-indigo-200">
-                        Update
-                      </button>
-                      <button onClick={() => handleOpenView(lead)} className="px-2 py-1 bg-indigo-50 text-indigo-600 rounded text-[10px] font-bold uppercase hover:bg-indigo-100 transition shadow-sm border border-indigo-200">
-                        View
-                      </button>
-                    </div>
+                    <button onClick={() => handleOpenFollowUp(lead)} className="px-2 py-1 bg-indigo-50 text-indigo-600 rounded text-[10px] font-bold uppercase hover:bg-indigo-100 transition shadow-sm border border-indigo-200">
+                      Update
+                    </button>
                   )}
                   <span className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase bg-blue-50 text-blue-700">
                     Qty: {lead.qty}
@@ -667,15 +689,7 @@ export default function BulkOrder() {
 
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div>
-                  <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Product</span>
-                  <span className="font-medium text-gray-800">{lead.productName || '-'}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500 block text-[10px] uppercase tracking-wide">W/O No</span>
-                  <span className="font-medium text-gray-800">{lead.woNo}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500 block text-[10px] uppercase tracking-wide">W/RES Date</span>
+                  <span className="text-gray-500 block text-[10px] uppercase tracking-wide">W/O Rec Date</span>
                   <span className="font-medium text-gray-800">{formatDate(lead.wResDate)}</span>
                 </div>
                 <div>
@@ -687,8 +701,8 @@ export default function BulkOrder() {
                   <span className="font-medium text-gray-800">{formatDate(lead.woDate)}</span>
                 </div>
                 <div>
-                  <span className="text-gray-500 block text-[10px] uppercase tracking-wide">W/O Despatch</span>
-                  <span className="font-medium text-emerald-600">{formatDate(lead.woDespatchDate)}</span>
+                  <span className="text-gray-500 block text-[10px] uppercase tracking-wide">W/O Shipment</span>
+                  <span className={getShipmentDisplay(lead).colorClass}>{formatDate(getShipmentDisplay(lead).date)}</span>
                 </div>
               </div>
               {lead.remarks && (
@@ -697,13 +711,11 @@ export default function BulkOrder() {
                   <span className="text-gray-700">{lead.remarks}</span>
                 </div>
               )}
-              {activeTab === 'history' && (
-                <div className="mt-2 pt-2 border-t border-indigo-100 bg-indigo-50/50 -mx-2.5 px-2.5 pb-1 flex justify-end">
-                   <button onClick={() => handleOpenView(lead)} className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded text-[10px] font-bold uppercase hover:bg-indigo-200 transition shadow-sm border border-indigo-300">
-                      View Data
-                   </button>
-                </div>
-              )}
+              <div className="mt-2 pt-2 border-t border-indigo-100 bg-indigo-50/50 -mx-2.5 px-2.5 pb-1 flex justify-end">
+                 <button onClick={() => handleOpenView(lead)} className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded text-[10px] font-bold uppercase hover:bg-indigo-200 transition shadow-sm border border-indigo-300">
+                    {activeTab === 'pending' ? 'View' : 'View Data'}
+                 </button>
+              </div>
             </div>
           ))}
 
@@ -719,48 +731,41 @@ export default function BulkOrder() {
           <table className="w-full min-w-[900px] relative">
             <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10 shadow-sm">
               <tr>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Action</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Serial No</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Added By</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Buyer</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Product Name</th>
+                {activeTab === 'pending' && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Action</th>}
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">W/O No</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">W/RES Date</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Buyer Code</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">W/O Date</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">W/O Despatch Date</th>
-                <th className="px-4 py-3 text-center text-sm font-semibold text-gray-900 whitespace-nowrap">Quantity</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">W/O Rec Date</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">W/O Shipment Date</th>
+                <th className="px-4 py-3 text-center text-sm font-semibold text-gray-900 whitespace-nowrap">Qty</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap max-w-[200px]">Remarks</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Added By</th>
+                <th className="px-4 py-3 text-center text-sm font-semibold text-gray-900 whitespace-nowrap">View</th>
               </tr>
             </thead>
             <tbody>
               {paginatedLeads.map((lead) => (
-                <tr key={lead.id} className="border-b border-gray-200 hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3 text-left text-sm whitespace-nowrap">
-                    {activeTab === 'pending' ? (
-                      <div className="flex items-center gap-1.5">
-                        <button onClick={() => handleOpenFollowUp(lead)} className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-md text-[11px] font-bold uppercase hover:bg-indigo-100 transition shadow-sm border border-indigo-200">
-                          Update
-                        </button>
-                        <button onClick={() => handleOpenView(lead)} className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-md text-[11px] font-bold uppercase hover:bg-indigo-100 transition shadow-sm border border-indigo-200">
-                          View
-                        </button>
-                      </div>
-                    ) : (
-                      <button onClick={() => handleOpenView(lead)} className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-md text-[11px] font-bold uppercase hover:bg-indigo-100 transition shadow-sm border border-indigo-200">
-                        View Data
+                <tr key={lead.id} className={`border-b border-gray-200 transition-colors ${getShipmentDisplay(lead).rowClass}`}>
+                  {activeTab === 'pending' && (
+                    <td className="px-4 py-3 text-left text-sm whitespace-nowrap">
+                      <button onClick={() => handleOpenFollowUp(lead)} className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-md text-[11px] font-bold uppercase hover:bg-indigo-100 transition shadow-sm border border-indigo-200">
+                        Update
                       </button>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-left text-sm text-indigo-600 font-bold whitespace-nowrap">{lead.sn}</td>
-                  <td className="px-4 py-3 text-left text-sm text-gray-700 font-semibold whitespace-nowrap">{lead.addedBy || '-'}</td>
+                    </td>
+                  )}
+                  <td className="px-4 py-3 text-left text-sm text-indigo-600 font-bold whitespace-nowrap">{lead.woNo}</td>
                   <td className="px-4 py-3 text-left text-sm text-gray-900 font-medium whitespace-nowrap">{lead.buyer}</td>
-                  <td className="px-4 py-3 text-left text-sm text-gray-900 whitespace-nowrap">{lead.productName || '-'}</td>
-                  <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{lead.woNo}</td>
-                  <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{formatDate(lead.wResDate)}</td>
                   <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{formatDate(lead.woDate)}</td>
-                  <td className="px-4 py-3 text-left text-sm font-medium text-emerald-600 whitespace-nowrap">{formatDate(lead.woDespatchDate)}</td>
+                  <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{formatDate(lead.wResDate)}</td>
+                  <td className={`px-4 py-3 text-left text-sm whitespace-nowrap ${getShipmentDisplay(lead).colorClass}`}>{formatDate(getShipmentDisplay(lead).date)}</td>
                   <td className="px-4 py-3 text-center text-sm font-semibold text-sky-700 bg-sky-50 whitespace-nowrap">{lead.qty}</td>
                   <td className="px-4 py-3 text-left text-sm text-gray-500 max-w-[200px] truncate">{lead.remarks || '-'}</td>
+                  <td className="px-4 py-3 text-left text-sm text-gray-700 font-semibold whitespace-nowrap">{lead.addedBy || '-'}</td>
+                  <td className="px-4 py-3 text-center text-sm whitespace-nowrap">
+                    <button onClick={() => handleOpenView(lead)} className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-md text-[11px] font-bold uppercase hover:bg-indigo-100 transition shadow-sm border border-indigo-200">
+                      {activeTab === 'pending' ? 'View' : 'View Data'}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

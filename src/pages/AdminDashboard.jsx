@@ -82,6 +82,7 @@ export default function AdminDashboard() {
         const q = filters.searchQuery.toLowerCase();
         return (
           (l.sn && l.sn.toLowerCase().includes(q)) ||
+          (l.sampleWONo && l.sampleWONo.toLowerCase().includes(q)) ||
           (l.buyerCoder && l.buyerCoder.toLowerCase().includes(q)) ||
           (l.type && l.type.toLowerCase().includes(q)) ||
           (l.remarks && l.remarks.toLowerCase().includes(q))
@@ -96,8 +97,8 @@ export default function AdminDashboard() {
 
   // Calculate statistics based on filtered data
   const totalLeads = filteredLeads.length;
-  const pendingDispatch = filteredLeads.filter(l => dashboardType === 'enquiry' ? !l.isFollowedUp : !l.isHistory).length;
-  const dispatchedLeads = filteredLeads.filter(l => dashboardType === 'enquiry' ? l.isFollowedUp : l.isHistory).length;
+  const pendingDispatch = filteredLeads.filter(l => dashboardType === 'enquiry' ? !l.dispatchSentDate : !l.isHistory).length;
+  const dispatchedLeads = filteredLeads.filter(l => dashboardType === 'enquiry' ? !!l.dispatchSentDate : l.isHistory).length;
   
   const todayDate = getTodayDate();
   const leadsToday = filteredLeads.filter(l => {
@@ -115,25 +116,25 @@ export default function AdminDashboard() {
   const handleDownloadCSV = () => {
     const isEnquiry = dashboardType === 'enquiry';
     const headers = isEnquiry 
-      ? ['SN', 'Receipt Date', 'Buyer Coder', 'Qty', 'Type', 'ETD', 'Status', 'Remarks']
-      : ['SN', 'W/RES Date', 'Buyer', 'Qty', 'Product Name', 'W/O No', 'Status', 'Remarks'];
+      ? ['Sample W/O No', 'Receipt Date', 'Buyer Code', 'Description of Enquiry', 'Qty', 'Type', 'Requirement Date', 'Status', 'Remarks']
+      : ['W/O No', 'W/RES Date', 'Buyer', 'Qty', 'Description of Enquiry', 'Status', 'Remarks'];
       
     const rows = filteredLeads.map(l => isEnquiry ? [
-      l.sn,
+      l.sampleWONo || '',
       formatDate(l.receiptDate),
       l.buyerCoder || '',
+      l.productName || '',
       l.qty || '',
       l.type || '',
-      l.etd || '',
-      l.isDispatched ? 'Dispatched' : 'Pending',
+      l.requirementDate || '',
+      l.dispatchSentDate ? 'Dispatched' : 'Pending',
       l.remarks || ''
     ] : [
-      l.sn,
+      l.woNo || '',
       formatDate(l.wResDate),
       l.buyer || '',
       l.qty || '',
       l.productName || '',
-      l.woNo || '',
       l.isHistory ? 'History' : 'Pending',
       l.remarks || ''
     ]);
@@ -185,7 +186,7 @@ export default function AdminDashboard() {
       stats[groupKey].total += 1;
       
       if (dashboardType === 'enquiry') {
-        if (l.isFollowedUp) {
+        if (l.dispatchSentDate) {
           stats[groupKey].completed += 1;
         }
       } else {
@@ -344,7 +345,7 @@ export default function AdminDashboard() {
                type="text"
                value={filters.buyerCoder}
                onChange={(e) => setFilters({ ...filters, buyerCoder: e.target.value })}
-               placeholder="Buyer Coder..."
+               placeholder="Buyer Code..."
                className="w-full bg-white border border-gray-300 rounded-lg lg:rounded px-2 py-1.5 focus:outline-none focus:border-indigo-500 text-[11px] md:text-sm h-[32px] md:h-[38px]"
              />
              {dashboardType === 'enquiry' && (
@@ -580,7 +581,7 @@ export default function AdminDashboard() {
           <div className="bg-white rounded-lg border border-gray-200 shadow-sm flex flex-col">
             <div className="p-4 border-b border-gray-100 flex items-center bg-gray-50/50 rounded-t-lg">
               <h3 className="text-lg font-bold text-gray-900">
-                Stage Progress (By Serial Number)
+                Stage Progress (By W/O No)
               </h3>
             </div>
             
@@ -588,7 +589,7 @@ export default function AdminDashboard() {
               <table className="w-full text-left border-collapse relative min-w-max">
                 <thead className="bg-gray-50 text-gray-700 text-[11px] font-bold uppercase tracking-wider border-b border-gray-200 sticky top-0 z-10 shadow-sm">
                   <tr>
-                    <th className="px-4 py-3">Serial No</th>
+                    <th className="px-4 py-3">W/O No</th>
                     <th className="px-4 py-3">Buyer Name</th>
                     <th className="px-4 py-3 text-center">Total Stages</th>
                     <th className="px-4 py-3 text-center">Completed</th>
@@ -621,7 +622,7 @@ export default function AdminDashboard() {
                         className="hover:bg-gray-50 transition-colors cursor-pointer"
                         onDoubleClick={() => setSelectedLeadDetails(l)}
                       >
-                        <td className="px-4 py-3 text-sm font-bold text-indigo-600">{l.sn}</td>
+                        <td className="px-4 py-3 text-sm font-bold text-indigo-600">{l.woNo}</td>
                         <td className="px-4 py-3 text-sm font-semibold text-gray-900">{l.buyer || '-'}</td>
                         <td className="px-4 py-3 text-sm font-semibold text-gray-700 text-center bg-gray-50/50">{totalStages}</td>
                         <td className="px-4 py-3 text-sm font-semibold text-emerald-700 text-center bg-emerald-50/50">{completedCount}</td>
@@ -645,7 +646,7 @@ export default function AdminDashboard() {
             {/* Modal Header */}
             <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
               <h3 className="text-xl font-bold text-gray-900">
-                Order Details: <span className="text-indigo-600">{selectedLeadDetails.sn}</span>
+                Order Details: <span className="text-indigo-600">{selectedLeadDetails.woNo}</span>
               </h3>
               <button 
                 onClick={() => setSelectedLeadDetails(null)}
@@ -663,12 +664,8 @@ export default function AdminDashboard() {
                   <p className="font-bold text-gray-900 text-xs">{selectedLeadDetails.buyer || '-'}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] text-gray-500 font-medium">Product Name</p>
+                  <p className="text-[10px] text-gray-500 font-medium">Description of Enquiry</p>
                   <p className="font-bold text-gray-900 text-xs">{selectedLeadDetails.productName || '-'}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-gray-500 font-medium">W/O No</p>
-                  <p className="font-bold text-gray-900 text-xs">{selectedLeadDetails.woNo || '-'}</p>
                 </div>
                 <div>
                   <p className="text-[10px] text-gray-500 font-medium">Quantity</p>
