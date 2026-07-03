@@ -28,7 +28,6 @@ const Sidebar = ({ isOpen, onClose }) => {
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/sample-management', icon: Plus, label: 'Sample Management' },
     { path: '/bulk-order', icon: TrendingDown, label: 'Bulk Production Order' },
-
     { path: '/settings', icon: Settings, label: 'Settings' },
   ];
 
@@ -38,7 +37,9 @@ const Sidebar = ({ isOpen, onClose }) => {
     { path: '/bulk-order', icon: TrendingDown, label: 'Bulk Production Order' },
   ];
 
-  const menuItems = user?.role === 'ADMIN' ? adminMenuItems : employeeMenuItems;
+  const menuItems = user?.role === 'ADMIN' 
+    ? adminMenuItems 
+    : employeeMenuItems.filter(item => (user?.accessPages || []).includes(item.path));
 
   return (
     <>

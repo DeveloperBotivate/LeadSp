@@ -59,41 +59,52 @@ export default function AdminDashboard() {
   }, [dashboardType]);
 
   const filteredLeads = useMemo(() => {
+    const isEnquiry = dashboardType === 'enquiry';
     let filtered = leads.filter(l => {
       // Date Range filter
+      const dateField = isEnquiry ? l.receiptDate : l.woDate;
       if (filters.dateFrom || filters.dateTo) {
-        if (!isDateInRange(l.receiptDate, filters.dateFrom, filters.dateTo)) {
+        if (!isDateInRange(dateField, filters.dateFrom, filters.dateTo)) {
           return false;
         }
       }
       
       // Type filter
-      if (filters.type && l.type !== filters.type) {
+      if (isEnquiry && filters.type && l.type !== filters.type) {
         return false;
       }
       
       // Buyer Coder filter
-      if (filters.buyerCoder && !l.buyerCoder?.toLowerCase().includes(filters.buyerCoder.toLowerCase())) {
+      const buyerField = isEnquiry ? l.buyerCoder : l.buyer;
+      if (filters.buyerCoder && !buyerField?.toLowerCase().includes(filters.buyerCoder.toLowerCase())) {
         return false;
       }
 
       // General Search filter
       if (filters.searchQuery) {
         const q = filters.searchQuery.toLowerCase();
-        return (
-          (l.sn && l.sn.toLowerCase().includes(q)) ||
-          (l.sampleWONo && l.sampleWONo.toLowerCase().includes(q)) ||
-          (l.buyerCoder && l.buyerCoder.toLowerCase().includes(q)) ||
-          (l.type && l.type.toLowerCase().includes(q)) ||
-          (l.remarks && l.remarks.toLowerCase().includes(q))
-        );
+        if (isEnquiry) {
+          return (
+            (l.sampleWONo && l.sampleWONo.toLowerCase().includes(q)) ||
+            (l.buyerCoder && l.buyerCoder.toLowerCase().includes(q)) ||
+            (l.type && l.type.toLowerCase().includes(q)) ||
+            (l.productName && l.productName.toLowerCase().includes(q)) ||
+            (l.remarks && l.remarks.toLowerCase().includes(q))
+          );
+        } else {
+          return (
+            (l.woNo && l.woNo.toLowerCase().includes(q)) ||
+            (l.buyer && l.buyer.toLowerCase().includes(q)) ||
+            (l.remarks && l.remarks.toLowerCase().includes(q))
+          );
+        }
       }
       return true;
     });
 
     // Sort by Date descending (newest first)
     return filtered.reverse();
-  }, [filters, leads]);
+  }, [filters, leads, dashboardType]);
 
   // Calculate statistics based on filtered data
   const totalLeads = filteredLeads.length;
@@ -540,7 +551,6 @@ export default function AdminDashboard() {
             </table>
           </DraggableScroll>
 
-          {/* Mobile Card View */}
           <div className="md:hidden flex flex-col gap-2 p-2 bg-slate-50/50 pb-2">
             {summaryStats.map((item, idx) => (
               <div key={idx} className="bg-white rounded-lg border border-indigo-50 shadow-[0_2px_10px_-4px_rgba(79,70,229,0.1)] p-3 relative flex flex-col gap-2 transition-all">
@@ -556,13 +566,20 @@ export default function AdminDashboard() {
                      <span className="font-bold text-indigo-700">{item.total}</span>
                   </div>
                   <div className="bg-emerald-50/50 p-1.5 rounded">
-                     <span className="text-gray-500 block text-[9px] uppercase tracking-wide mb-1">Complete</span>
+                     <span className="text-gray-500 block text-[9px] uppercase tracking-wide mb-1">{dashboardType === 'enquiry' ? 'Dispatched' : 'Complete'}</span>
                      <span className="font-bold text-emerald-700">{item.completed}</span>
                   </div>
-                  <div className="bg-red-50/50 p-1.5 rounded">
-                     <span className="text-gray-500 block text-[9px] uppercase tracking-wide mb-1">Delays</span>
-                     <span className="font-bold text-red-700">{item.delays}</span>
-                  </div>
+                  {dashboardType === 'enquiry' ? (
+                    <div className="bg-orange-50/50 p-1.5 rounded">
+                       <span className="text-gray-500 block text-[9px] uppercase tracking-wide mb-1">Pending</span>
+                       <span className="font-bold text-orange-700">{item.total - item.completed}</span>
+                    </div>
+                  ) : (
+                    <div className="bg-red-50/50 p-1.5 rounded">
+                       <span className="text-gray-500 block text-[9px] uppercase tracking-wide mb-1">Delays</span>
+                       <span className="font-bold text-red-700">{item.delays}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -601,20 +618,23 @@ export default function AdminDashboard() {
                   {paginatedLeads.map((l, idx) => {
                     let completedCount = 0;
                     let delayedCount = 0;
+                    const totalStages = STAGES_LIST.length;
                     
                     if (l.isHistory) {
-                      completedCount = 8;
-                    } else {
-                      for (let s = 1; s <= 8; s++) {
-                        const stg = l[`stage${s}`];
-                        if (stg) {
-                          if (stg.status === 'Completed') completedCount++;
-                          else if (stg.status === 'Delayed') delayedCount++;
+                      completedCount = totalStages;
+                    } else if (l.stages && Array.isArray(l.stages)) {
+                      l.stages.forEach(stage => {
+                        if (stage.actualDate) {
+                          completedCount++;
+                          if (stage.plannedDate && new Date(stage.actualDate) > new Date(stage.plannedDate)) {
+                            delayedCount++;
+                          }
+                        } else if (stage.plannedDate && new Date() > new Date(stage.plannedDate)) {
+                           delayedCount++;
                         }
-                      }
+                      });
                     }
-                    const totalStages = 8;
-                    const pendingCount = totalStages - completedCount - delayedCount;
+                    const pendingCount = totalStages - completedCount;
 
                     return (
                       <tr 
@@ -677,7 +697,8 @@ export default function AdminDashboard() {
               <div className="space-y-1.5">
                 {STAGES_LIST.map((stageName, index) => {
                   const stageNum = index + 1;
-                  const stg = selectedLeadDetails[`stage${stageNum}`];
+                  const stages = selectedLeadDetails.stages || [];
+                  const stg = stages.find(s => s.name === stageName);
                   
                   // Status Colors
                   let statusColor = "bg-gray-100 text-gray-500";
@@ -687,10 +708,14 @@ export default function AdminDashboard() {
                     statusColor = "bg-emerald-100 text-emerald-700";
                     statusText = "Completed";
                   } else if (stg) {
-                    if (stg.status === 'Completed') {
+                    if (stg.actualDate) {
                       statusColor = "bg-emerald-100 text-emerald-700";
                       statusText = "Completed";
-                    } else if (stg.status === 'Delayed') {
+                      if (stg.plannedDate && new Date(stg.actualDate) > new Date(stg.plannedDate)) {
+                        statusColor = "bg-orange-100 text-orange-700";
+                        statusText = "Completed (Delayed)";
+                      }
+                    } else if (stg.plannedDate && new Date() > new Date(stg.plannedDate)) {
                       statusColor = "bg-red-100 text-red-700";
                       statusText = "Delayed";
                     }

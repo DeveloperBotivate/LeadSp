@@ -131,29 +131,61 @@ const getTimeDelay = (planned, actual) => {
   return 'On time';
 };
 
+const STAGES_LIST = [
+  'HANDOVER',
+  'LEATHER IN-HOUSE',
+  'MATERIALS IN-HOUSE',
+  'PACKING MATERIALS IN-HOUSE',
+  'CUTTING COMPLETION',
+  'FABRICATION COMPLETION',
+  'QA COMPLETED',
+  'Planned Shipment'
+];
+
+const ALL_COLUMNS = [
+  { id: 'woNo', label: 'W/O No' },
+  { id: 'buyer', label: 'Buyer Code' },
+  { id: 'woDate', label: 'W/O Date' },
+  { id: 'wResDate', label: 'W/O Rec Date' },
+  { id: 'woDespatchDate', label: 'W/O Shipment Date' },
+  { id: 'qty', label: 'Qty' },
+  { id: 'remarks', label: 'Remarks' },
+  ...STAGES_LIST.flatMap(stage => [
+    { id: `${stage}_plannedDate`, label: `${stage} Planned Date` },
+    { id: `${stage}_actualDate`, label: `${stage} Actual Date` },
+    { id: `${stage}_timeDelay`, label: `${stage} Time Delay` },
+    { id: `${stage}_remarks`, label: `${stage} Remarks` }
+  ]),
+  { id: 'addedBy', label: 'Added By' }
+];
+
 export default function BulkOrder() {
   const [activeTab, setActiveTab] = useState('pending');
   const [leads, setLeads] = useState(getLeads());
   const [showFormModal, setShowFormModal] = useState(false);
   const [showFollowUpModal, setShowFollowUpModal] = useState(false);
   const [selectedLead, setSelectedLead] = useState(null);
-  const STAGES_LIST = [
-    'HANDOVER',
-    'LEATHER IN-HOUSE',
-    'MATERIALS IN-HOUSE',
-    'PACKING MATERIALS IN-HOUSE',
-    'CUTTING COMPLETION',
-    'FABRICATION COMPLETION',
-    'QA COMPLETED',
-    'Planned Shipment'
+
+  const DEFAULT_VISIBLE_COLUMNS = [
+    'woNo', 'buyer', 'woDate', 'wResDate', 'woDespatchDate', 'qty', 'remarks', 'addedBy'
   ];
 
+  const [showColumnDropdown, setShowColumnDropdown] = useState(false);
+  const [visibleColumns, setVisibleColumns] = useState(
+    ALL_COLUMNS.reduce((acc, col) => ({
+      ...acc,
+      [col.id]: DEFAULT_VISIBLE_COLUMNS.includes(col.id)
+    }), {})
+  );
+
   const [followUpFormData, setFollowUpFormData] = useState({
-    stages: STAGES_LIST.map(name => ({ name, plannedDate: '', actualDate: '', remarks: '' }))
+    stages: STAGES_LIST.map(name => ({ name, plannedDate: '', actualDate: '', remarks: '' })),
+    woDespatchDate: ''
   });
-  
+  const [isEditingShipmentDate, setIsEditingShipmentDate] = useState(false);
+
   const currentUser = JSON.parse(localStorage.getItem('pcb_authUser')) || { name: 'Unknown User' };
-  
+
   const [isViewMode, setIsViewMode] = useState(false);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [filters, setFilters] = useState({
@@ -243,7 +275,8 @@ export default function BulkOrder() {
   const handleOpenFollowUp = (lead) => {
     setSelectedLead(lead);
     setIsViewMode(false);
-    
+    setIsEditingShipmentDate(false);
+
     // Prefill with existing stages if available, else default
     let stages = lead.stages;
     if (!stages || stages.length === 0) {
@@ -256,14 +289,17 @@ export default function BulkOrder() {
       });
     }
 
-    setFollowUpFormData({ stages });
+    setFollowUpFormData({ stages, woDespatchDate: lead.woDespatchDate || '' });
     setShowFollowUpModal(true);
   };
 
   const handleOpenView = (lead) => {
     setSelectedLead(lead);
     setIsViewMode(true);
-    setFollowUpFormData({ stages: lead.stages || STAGES_LIST.map(name => ({ name, plannedDate: '', actualDate: '', remarks: '' })) });
+    setFollowUpFormData({ 
+      stages: lead.stages || STAGES_LIST.map(name => ({ name, plannedDate: '', actualDate: '', remarks: '' })),
+      woDespatchDate: lead.woDespatchDate || ''
+    });
     setShowFollowUpModal(true);
   };
 
@@ -277,6 +313,7 @@ export default function BulkOrder() {
     const updatedLead = {
       ...selectedLead,
       stages: followUpFormData.stages,
+      woDespatchDate: followUpFormData.woDespatchDate || selectedLead.woDespatchDate,
       isHistory: allStagesComplete,
       historyTimestamp: allStagesComplete ? new Date().toISOString() : selectedLead.historyTimestamp
     };
@@ -284,7 +321,7 @@ export default function BulkOrder() {
     saveLead(updatedLead);
     setLeads(getLeads());
     setShowFollowUpModal(false);
-    
+
     if (allStagesComplete && !selectedLead.isHistory) {
       toast.success(`All stages complete! ${selectedLead.sn} moved to History.`);
     } else {
@@ -295,7 +332,7 @@ export default function BulkOrder() {
   const getShipmentDisplay = (lead) => {
     let isActuallyShipped = false;
     let actualShipmentDate = null;
-    
+
     if (lead.stages && lead.stages.length >= 8) {
       const shipmentStage = lead.stages[7]; // 8th stage is Planned Shipment
       if (shipmentStage && shipmentStage.actualDate) {
@@ -307,14 +344,14 @@ export default function BulkOrder() {
     if (isActuallyShipped || lead.isHistory) {
       return {
         date: actualShipmentDate || lead.woDespatchDate,
-        colorClass: "text-green-700 font-bold",
-        rowClass: "bg-green-50/70 hover:bg-green-100",
+        colorClass: "text-green-800 font-bold",
+        rowClass: "bg-green-200 hover:bg-green-300 border-green-300",
         isActual: true
       };
     }
 
     if (!lead.woDespatchDate) {
-      return { date: null, colorClass: "text-gray-700", rowClass: "bg-white hover:bg-gray-50", isActual: false };
+      return { date: null, colorClass: "text-gray-700", rowClass: "bg-white hover:bg-gray-50 border-gray-200", isActual: false };
     }
 
     const today = new Date();
@@ -327,17 +364,26 @@ export default function BulkOrder() {
     if (diffDays < 0) {
       return {
         date: lead.woDespatchDate,
-        colorClass: "text-red-700 font-bold",
-        rowClass: "bg-red-50/70 hover:bg-red-100",
+        colorClass: "text-red-800 font-bold",
+        rowClass: "bg-red-200 hover:bg-red-300 border-red-300",
         isActual: false
       };
     }
 
-    if (diffDays >= 0 && diffDays <= 5) {
+    if (diffDays === 0) {
       return {
         date: lead.woDespatchDate,
-        colorClass: "text-orange-700 font-bold",
-        rowClass: "bg-orange-50/70 hover:bg-orange-100",
+        colorClass: "text-green-800 font-bold",
+        rowClass: "bg-green-200 hover:bg-green-300 border-green-300",
+        isActual: false
+      };
+    }
+
+    if (diffDays > 0 && diffDays <= 5) {
+      return {
+        date: lead.woDespatchDate,
+        colorClass: "text-orange-800 font-bold",
+        rowClass: "bg-orange-200 hover:bg-orange-300 border-orange-300",
         isActual: false
       };
     }
@@ -345,7 +391,7 @@ export default function BulkOrder() {
     return {
       date: lead.woDespatchDate,
       colorClass: "text-gray-900 font-medium",
-      rowClass: "bg-white hover:bg-gray-50",
+      rowClass: "bg-white hover:bg-gray-50 border-gray-200",
       isActual: false
     };
   };
@@ -359,23 +405,21 @@ export default function BulkOrder() {
         {/* Tabs as Buttons */}
         <button
           onClick={() => { setActiveTab('pending'); setCurrentPage(1); }}
-          className={`w-full lg:w-auto px-6 py-1.5 rounded-lg text-sm font-semibold transition-all h-[32px] md:h-[38px] ${
-            activeTab === 'pending'
+          className={`w-full lg:w-auto px-6 py-1.5 rounded-lg text-sm font-semibold transition-all h-[32px] md:h-[38px] ${activeTab === 'pending'
               ? 'bg-indigo-600 text-white shadow-sm'
               : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'
-          }`}
+            }`}
         >
-          Pending
+          Pending ({leads.filter(l => !l.isHistory).length})
         </button>
         <button
           onClick={() => { setActiveTab('history'); setCurrentPage(1); }}
-          className={`w-full lg:w-auto px-6 py-1.5 rounded-lg text-sm font-semibold transition-all h-[32px] md:h-[38px] ${
-            activeTab === 'history'
+          className={`w-full lg:w-auto px-6 py-1.5 rounded-lg text-sm font-semibold transition-all h-[32px] md:h-[38px] ${activeTab === 'history'
               ? 'bg-indigo-600 text-white shadow-sm'
               : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'
-          }`}
+            }`}
         >
-          History
+          History ({leads.filter(l => l.isHistory).length})
         </button>
 
         {/* Search & Mobile Add & Filter */}
@@ -407,7 +451,49 @@ export default function BulkOrder() {
         </div>
 
         {/* Filters */}
-        <div className={`${showMobileFilters ? 'grid' : 'hidden'} lg:flex grid-cols-2 lg:flex-row gap-2 w-full lg:w-auto lg:flex-[4] items-center`}>
+        <div className={`${showMobileFilters ? 'grid' : 'hidden'} lg:flex grid-cols-2 lg:flex-row gap-2 w-full lg:w-auto lg:flex-[4] items-center relative`}>
+          {/* Column Visibility Dropdown */}
+          <div className="relative w-full lg:w-auto col-span-2 lg:col-span-1">
+            <button
+              onClick={() => setShowColumnDropdown(!showColumnDropdown)}
+              className="bg-white border border-gray-300 rounded-lg lg:rounded px-3 py-1.5 focus:outline-none focus:border-indigo-500 text-[11px] md:text-sm h-[32px] md:h-[38px] flex items-center justify-between w-full lg:w-48 text-gray-700 shadow-sm hover:bg-gray-50"
+            >
+              <span className="truncate">Visible Columns</span>
+              <span className="ml-2 text-[10px]">▼</span>
+            </button>
+            {showColumnDropdown && (
+              <div className="absolute top-[calc(100%+4px)] left-0 mt-1 w-full lg:w-56 bg-white border border-gray-200 rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto">
+                <div className="p-2 space-y-1">
+                  <label className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-50 rounded cursor-pointer border-b border-gray-100 mb-1 pb-2">
+                    <input
+                      type="checkbox"
+                      checked={Object.values(visibleColumns).every(Boolean)}
+                      onChange={(e) => {
+                        const isChecked = e.target.checked;
+                        setVisibleColumns(
+                          ALL_COLUMNS.reduce((acc, col) => ({ ...acc, [col.id]: isChecked }), {})
+                        );
+                      }}
+                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-xs font-semibold text-gray-700 select-none">Select All</span>
+                  </label>
+                  {ALL_COLUMNS.map(col => (
+                    <label key={col.id} className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-50 rounded cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={visibleColumns[col.id]}
+                        onChange={(e) => setVisibleColumns({ ...visibleColumns, [col.id]: e.target.checked })}
+                        className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span className="text-xs text-gray-700 select-none">{col.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
           <input
             type="text"
             placeholder="W/O From Date"
@@ -477,18 +563,6 @@ export default function BulkOrder() {
                     />
                   </div>
 
-                  {/* W/RES Date */}
-                  <div>
-                    <label className="block text-[11px] md:text-sm font-medium text-gray-700 mb-0.5 md:mb-1">W/O Rec Date *</label>
-                    <input
-                      type="date"
-                      value={formData.wResDate}
-                      onChange={(e) => setFormData({ ...formData, wResDate: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-[11px] md:text-sm bg-white min-h-[30px] md:min-h-[38px]"
-                      required
-                    />
-                  </div>
-
                   {/* W/O Date */}
                   <div>
                     <label className="block text-[11px] md:text-sm font-medium text-gray-700 mb-0.5 md:mb-1">W/O Date *</label>
@@ -496,6 +570,18 @@ export default function BulkOrder() {
                       type="date"
                       value={formData.woDate}
                       onChange={(e) => setFormData({ ...formData, woDate: e.target.value })}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-[11px] md:text-sm bg-white min-h-[30px] md:min-h-[38px]"
+                      required
+                    />
+                  </div>
+
+                  {/* W/RES Date */}
+                  <div>
+                    <label className="block text-[11px] md:text-sm font-medium text-gray-700 mb-0.5 md:mb-1">W/O Received Date *</label>
+                    <input
+                      type="date"
+                      value={formData.wResDate}
+                      onChange={(e) => setFormData({ ...formData, wResDate: e.target.value })}
                       className="w-full border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-[11px] md:text-sm bg-white min-h-[30px] md:min-h-[38px]"
                       required
                     />
@@ -563,7 +649,7 @@ export default function BulkOrder() {
                 <X size={20} className="md:w-6 md:h-6" />
               </button>
             </div>
-            
+
             <div className="p-4 md:p-6 overflow-y-auto flex-1">
               {/* Read Only Details */}
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
@@ -572,9 +658,32 @@ export default function BulkOrder() {
                   <div><span className="text-gray-500 block text-[10px] uppercase">W/O No</span><span className="font-medium text-indigo-600 font-bold">{selectedLead.woNo || '-'}</span></div>
                   <div><span className="text-gray-500 block text-[10px] uppercase">Buyer Code</span><span className="font-medium">{selectedLead.buyer || '-'}</span></div>
                   <div><span className="text-gray-500 block text-[10px] uppercase">Quantity</span><span className="font-medium">{selectedLead.qty || '-'}</span></div>
-                  <div><span className="text-gray-500 block text-[10px] uppercase">W/O Rec Date</span><span className="font-medium">{formatDate(selectedLead.wResDate)}</span></div>
+                  <div><span className="text-gray-500 block text-[10px] uppercase">W/O Received Date</span><span className="font-medium">{formatDate(selectedLead.wResDate)}</span></div>
                   <div><span className="text-gray-500 block text-[10px] uppercase">W/O Date</span><span className="font-medium">{formatDate(selectedLead.woDate)}</span></div>
-                  <div><span className="text-gray-500 block text-[10px] uppercase">W/O Shipment</span><span className="font-medium">{formatDate(selectedLead.woDespatchDate)}</span></div>
+                  <div>
+                    <span className="text-gray-500 flex items-center gap-1.5 text-[10px] uppercase">
+                      W/O Shipment
+                      {!isViewMode && currentUser?.role === 'ADMIN' && !isEditingShipmentDate && (
+                        <button 
+                          type="button" 
+                          onClick={() => setIsEditingShipmentDate(true)}
+                          className="text-indigo-600 hover:text-indigo-800 underline text-[9px] lowercase font-semibold"
+                        >
+                          edit
+                        </button>
+                      )}
+                    </span>
+                    {!isViewMode && currentUser?.role === 'ADMIN' && isEditingShipmentDate ? (
+                      <input 
+                        type="date"
+                        value={followUpFormData.woDespatchDate || ''}
+                        onChange={(e) => setFollowUpFormData({ ...followUpFormData, woDespatchDate: e.target.value })}
+                        className="border border-gray-300 rounded px-1.5 py-0.5 text-xs focus:ring-1 focus:ring-indigo-400 focus:outline-none w-[120px] font-medium text-gray-800 mt-0.5"
+                      />
+                    ) : (
+                      <span className="font-medium block mt-0.5">{formatDate(selectedLead.woDespatchDate)}</span>
+                    )}
+                  </div>
                   <div className="col-span-3 md:col-span-4 lg:col-span-5"><span className="text-gray-500 block text-[9px] uppercase">Remarks</span><span className="font-medium text-gray-700 text-xs">{selectedLead.remarks || '-'}</span></div>
                 </div>
               </div>
@@ -601,6 +710,7 @@ export default function BulkOrder() {
                               type="date"
                               value={stage.plannedDate}
                               disabled={isViewMode}
+                              max={selectedLead?.woDespatchDate}
                               onChange={(e) => {
                                 const newStages = [...followUpFormData.stages];
                                 newStages[index].plannedDate = e.target.value;
@@ -668,12 +778,10 @@ export default function BulkOrder() {
         <div className="md:hidden flex flex-col gap-2 p-2 overflow-y-auto flex-1 bg-slate-50/50 pb-2">
           {paginatedLeads.map((lead) => (
             <div key={lead.id} className={`${getShipmentDisplay(lead).rowClass.split(' ')[0]} rounded-lg border border-indigo-50 shadow-[0_2px_10px_-4px_rgba(79,70,229,0.1)] p-2.5 relative flex flex-col gap-2 transition-all`}>
-              <div className="flex justify-between items-start border-b border-slate-100 pb-2">
+              <div className="flex justify-between items-start border-b border-black/10 pb-2">
                 <div>
-                  <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest block leading-none mb-1">{lead.woNo}</span>
-                  <h3 className="font-bold text-gray-900 text-sm leading-tight">
-                    {lead.buyer}
-                  </h3>
+                  {visibleColumns.woNo && <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest block leading-none mb-1">{lead.woNo}</span>}
+                  {visibleColumns.buyer && <h3 className="font-bold text-gray-900 text-sm leading-tight">{lead.buyer}</h3>}
                 </div>
                 <div className="text-right flex flex-col gap-1 items-end">
                   {activeTab === 'pending' && (
@@ -681,40 +789,86 @@ export default function BulkOrder() {
                       Update
                     </button>
                   )}
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase bg-blue-50 text-blue-700">
-                    Qty: {lead.qty}
-                  </span>
+                  {visibleColumns.qty && (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase bg-blue-50 text-blue-700">
+                      Qty: {lead.qty}
+                    </span>
+                  )}
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-2 text-xs">
-                <div>
-                  <span className="text-gray-500 block text-[10px] uppercase tracking-wide">W/O Rec Date</span>
-                  <span className="font-medium text-gray-800">{formatDate(lead.wResDate)}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Added By</span>
-                  <span className="font-medium text-indigo-600">{lead.addedBy || '-'}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500 block text-[10px] uppercase tracking-wide">W/O Date</span>
-                  <span className="font-medium text-gray-800">{formatDate(lead.woDate)}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500 block text-[10px] uppercase tracking-wide">W/O Shipment</span>
-                  <span className={getShipmentDisplay(lead).colorClass}>{formatDate(getShipmentDisplay(lead).date)}</span>
-                </div>
+                {visibleColumns.wResDate && (
+                  <div>
+                    <span className="text-gray-500 block text-[10px] uppercase tracking-wide">W/O Received Date</span>
+                    <span className="font-medium text-gray-800">{formatDate(lead.wResDate)}</span>
+                  </div>
+                )}
+                {visibleColumns.woDate && (
+                  <div>
+                    <span className="text-gray-500 block text-[10px] uppercase tracking-wide">W/O Date</span>
+                    <span className="font-medium text-gray-800">{formatDate(lead.woDate)}</span>
+                  </div>
+                )}
+                {visibleColumns.woDespatchDate && (
+                  <div>
+                    <span className="text-gray-500 block text-[10px] uppercase tracking-wide">W/O Shipment</span>
+                    <span className={getShipmentDisplay(lead).colorClass}>{formatDate(getShipmentDisplay(lead).date)}</span>
+                  </div>
+                )}
+                {visibleColumns.addedBy && (
+                  <div>
+                    <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Added By</span>
+                    <span className="font-medium text-indigo-600">{lead.addedBy || '-'}</span>
+                  </div>
+                )}
               </div>
-              {lead.remarks && (
+
+              {visibleColumns.remarks && lead.remarks && (
                 <div className="mt-1 pt-2 border-t border-gray-50 text-xs">
                   <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Remarks</span>
                   <span className="text-gray-700">{lead.remarks}</span>
                 </div>
               )}
+
+              {/* Mobile Stage Cards conditionally rendered */}
+              <div className="mt-2 space-y-2">
+                {STAGES_LIST.map(stage => {
+                  const stages = lead.stages || [];
+                  const stageData = stages.find(s => s.name === stage) || {};
+
+                  const showPlanned = visibleColumns[`${stage}_plannedDate`];
+                  const showActual = visibleColumns[`${stage}_actualDate`];
+                  const showDelay = visibleColumns[`${stage}_timeDelay`];
+                  const showRemarks = visibleColumns[`${stage}_remarks`];
+
+                  if (!showPlanned && !showActual && !showDelay && !showRemarks) return null;
+
+                  return (
+                    <div key={stage} className="bg-indigo-50/50 rounded border border-indigo-100 p-2 text-xs">
+                      <h4 className="font-bold text-indigo-800 mb-1 border-b border-indigo-100 pb-1">{stage}</h4>
+                      <div className="grid grid-cols-2 gap-1 mt-1">
+                        {showPlanned && (
+                          <div><span className="text-gray-500 text-[9px] uppercase block">Planned</span><span>{formatDate(stageData.plannedDate)}</span></div>
+                        )}
+                        {showActual && (
+                          <div><span className="text-gray-500 text-[9px] uppercase block">Actual</span><span>{formatDate(stageData.actualDate)}</span></div>
+                        )}
+                        {showDelay && (
+                          <div className="col-span-2"><span className="text-gray-500 text-[9px] uppercase block">Delay</span><span>{getTimeDelay(stageData.plannedDate, stageData.actualDate)}</span></div>
+                        )}
+                        {showRemarks && stageData.remarks && (
+                          <div className="col-span-2 mt-1"><span className="text-gray-500 text-[9px] uppercase block">Remarks</span><span className="text-gray-700">{stageData.remarks}</span></div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
               <div className="mt-2 pt-2 border-t border-indigo-100 bg-indigo-50/50 -mx-2.5 px-2.5 pb-1 flex justify-end">
-                 <button onClick={() => handleOpenView(lead)} className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded text-[10px] font-bold uppercase hover:bg-indigo-200 transition shadow-sm border border-indigo-300">
-                    {activeTab === 'pending' ? 'View' : 'View Data'}
-                 </button>
+                <button onClick={() => handleOpenView(lead)} className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded text-[10px] font-bold uppercase hover:bg-indigo-200 transition shadow-sm border border-indigo-300">
+                  {activeTab === 'pending' ? 'View' : 'View Data'}
+                </button>
               </div>
             </div>
           ))}
@@ -731,43 +885,73 @@ export default function BulkOrder() {
           <table className="w-full min-w-[900px] relative">
             <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10 shadow-sm">
               <tr>
-                {activeTab === 'pending' && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Action</th>}
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">W/O No</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Buyer Code</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">W/O Date</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">W/O Rec Date</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">W/O Shipment Date</th>
-                <th className="px-4 py-3 text-center text-sm font-semibold text-gray-900 whitespace-nowrap">Qty</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap max-w-[200px]">Remarks</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Added By</th>
+                {activeTab === 'pending' && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap bg-gray-50 z-20">Action</th>}
+                {visibleColumns.woNo && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">W/O No</th>}
+                {visibleColumns.buyer && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Buyer Code</th>}
+                {visibleColumns.woDate && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">W/O Date</th>}
+                {visibleColumns.wResDate && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">W/O Received Date</th>}
+                {visibleColumns.woDespatchDate && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">W/O Shipment Date</th>}
+                {visibleColumns.qty && <th className="px-4 py-3 text-center text-sm font-semibold text-gray-900 whitespace-nowrap">Qty</th>}
+                {visibleColumns.remarks && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap max-w-[200px]">Remarks</th>}
+
+                {STAGES_LIST.map(stage => (
+                  <React.Fragment key={stage}>
+                    {visibleColumns[`${stage}_plannedDate`] && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap bg-indigo-50/30">{stage} Planned Date</th>}
+                    {visibleColumns[`${stage}_actualDate`] && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap bg-indigo-50/30">{stage} Actual Date</th>}
+                    {visibleColumns[`${stage}_timeDelay`] && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap bg-indigo-50/30">{stage} Time Delay</th>}
+                    {visibleColumns[`${stage}_remarks`] && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap bg-indigo-50/30 max-w-[200px]">{stage} Remarks</th>}
+                  </React.Fragment>
+                ))}
+
+                {visibleColumns.addedBy && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Added By</th>}
                 <th className="px-4 py-3 text-center text-sm font-semibold text-gray-900 whitespace-nowrap">View</th>
               </tr>
             </thead>
             <tbody>
-              {paginatedLeads.map((lead) => (
-                <tr key={lead.id} className={`border-b border-gray-200 transition-colors ${getShipmentDisplay(lead).rowClass}`}>
-                  {activeTab === 'pending' && (
-                    <td className="px-4 py-3 text-left text-sm whitespace-nowrap">
-                      <button onClick={() => handleOpenFollowUp(lead)} className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-md text-[11px] font-bold uppercase hover:bg-indigo-100 transition shadow-sm border border-indigo-200">
-                        Update
+              {paginatedLeads.map((lead) => {
+                const getStageData = (stageName) => {
+                  const stages = lead.stages || [];
+                  return stages.find(s => s.name === stageName) || {};
+                };
+
+                return (
+                  <tr key={lead.id} className={`border-b border-gray-200 transition-colors ${getShipmentDisplay(lead).rowClass}`}>
+                    {activeTab === 'pending' && (
+                      <td className="px-4 py-3 text-left text-sm whitespace-nowrap bg-white/50">
+                        <button onClick={() => handleOpenFollowUp(lead)} className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-md text-[11px] font-bold uppercase hover:bg-indigo-100 transition shadow-sm border border-indigo-200">
+                          Update
+                        </button>
+                      </td>
+                    )}
+                    {visibleColumns.woNo && <td className="px-4 py-3 text-left text-sm text-indigo-600 font-bold whitespace-nowrap">{lead.woNo}</td>}
+                    {visibleColumns.buyer && <td className="px-4 py-3 text-left text-sm text-gray-900 font-medium whitespace-nowrap">{lead.buyer}</td>}
+                    {visibleColumns.woDate && <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{formatDate(lead.woDate)}</td>}
+                    {visibleColumns.wResDate && <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{formatDate(lead.wResDate)}</td>}
+                    {visibleColumns.woDespatchDate && <td className={`px-4 py-3 text-left text-sm whitespace-nowrap ${getShipmentDisplay(lead).colorClass}`}>{formatDate(getShipmentDisplay(lead).date)}</td>}
+                    {visibleColumns.qty && <td className="px-4 py-3 text-center text-sm font-semibold text-sky-700 bg-sky-50 whitespace-nowrap">{lead.qty}</td>}
+                    {visibleColumns.remarks && <td className="px-4 py-3 text-left text-sm text-gray-500 max-w-[200px] truncate">{lead.remarks || '-'}</td>}
+
+                    {STAGES_LIST.map(stage => {
+                      const stageData = getStageData(stage);
+                      return (
+                        <React.Fragment key={stage}>
+                          {visibleColumns[`${stage}_plannedDate`] && <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{formatDate(stageData.plannedDate)}</td>}
+                          {visibleColumns[`${stage}_actualDate`] && <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{formatDate(stageData.actualDate)}</td>}
+                          {visibleColumns[`${stage}_timeDelay`] && <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{getTimeDelay(stageData.plannedDate, stageData.actualDate)}</td>}
+                          {visibleColumns[`${stage}_remarks`] && <td className="px-4 py-3 text-left text-sm text-gray-500 max-w-[200px] truncate">{stageData.remarks || '-'}</td>}
+                        </React.Fragment>
+                      );
+                    })}
+
+                    {visibleColumns.addedBy && <td className="px-4 py-3 text-left text-sm text-gray-700 font-semibold whitespace-nowrap">{lead.addedBy || '-'}</td>}
+                    <td className="px-4 py-3 text-center text-sm whitespace-nowrap bg-white/50">
+                      <button onClick={() => handleOpenView(lead)} className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-md text-[11px] font-bold uppercase hover:bg-indigo-100 transition shadow-sm border border-indigo-200">
+                        {activeTab === 'pending' ? 'View' : 'View Data'}
                       </button>
                     </td>
-                  )}
-                  <td className="px-4 py-3 text-left text-sm text-indigo-600 font-bold whitespace-nowrap">{lead.woNo}</td>
-                  <td className="px-4 py-3 text-left text-sm text-gray-900 font-medium whitespace-nowrap">{lead.buyer}</td>
-                  <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{formatDate(lead.woDate)}</td>
-                  <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{formatDate(lead.wResDate)}</td>
-                  <td className={`px-4 py-3 text-left text-sm whitespace-nowrap ${getShipmentDisplay(lead).colorClass}`}>{formatDate(getShipmentDisplay(lead).date)}</td>
-                  <td className="px-4 py-3 text-center text-sm font-semibold text-sky-700 bg-sky-50 whitespace-nowrap">{lead.qty}</td>
-                  <td className="px-4 py-3 text-left text-sm text-gray-500 max-w-[200px] truncate">{lead.remarks || '-'}</td>
-                  <td className="px-4 py-3 text-left text-sm text-gray-700 font-semibold whitespace-nowrap">{lead.addedBy || '-'}</td>
-                  <td className="px-4 py-3 text-center text-sm whitespace-nowrap">
-                    <button onClick={() => handleOpenView(lead)} className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-md text-[11px] font-bold uppercase hover:bg-indigo-100 transition shadow-sm border border-indigo-200">
-                      {activeTab === 'pending' ? 'View' : 'View Data'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
 

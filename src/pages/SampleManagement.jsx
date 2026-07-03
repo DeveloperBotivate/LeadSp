@@ -15,7 +15,7 @@ const getTodayDate = () => {
 const getLeads = () => {
   let leads = JSON.parse(localStorage.getItem('pcb_leads')) || [];
 
-  if (leads.length > 0 && (!leads[0]._v8 || leads[0].remarks?.includes('Dummy'))) {
+  if (leads.length > 0 && !leads[0]._v10) {
     leads = [];
     localStorage.removeItem('pcb_leads');
   }
@@ -62,6 +62,17 @@ const getLeads = () => {
       
       const isHistory = i % 3 === 0; // Every 3rd lead goes to history
       
+      let reqDateStr = dateObj.toISOString().split('T')[0];
+      if (!isHistory) {
+        if (i % 4 === 1) {
+          reqDateStr = baseDate.toISOString().split('T')[0]; // Today (Green)
+        } else if (i % 4 === 2) {
+          reqDateStr = new Date(baseDate.getTime() + (3 * 86400000)).toISOString().split('T')[0]; // +3 Days (Orange)
+        } else if (i % 4 === 3) {
+          reqDateStr = new Date(baseDate.getTime() + (10 * 86400000)).toISOString().split('T')[0]; // +10 Days (White)
+        } // i % 4 === 0 is past (Red)
+      }
+
       const lead = {
         id: `LEAD-${Date.now()}-${i}`,
         receiptDate: dateObj.toISOString().split('T')[0],
@@ -69,11 +80,12 @@ const getLeads = () => {
         productName: `Product ${i + 1}`,
         qty: `${(i + 1) * 50}`,
         type: types[i % types.length],
-        requirementDate: dateObj.toISOString().split('T')[0],
+        requirementDate: reqDateStr,
         sampleWONo: `WO-${1000 + i}`,
+        sampleWODate: dateObj.toISOString().split('T')[0],
         completionDate: isHistory ? compDateObj.toISOString().split('T')[0] : '',
-        _v8: true,
-        remarks: `Dummy lead record v8 ${i + 1}`,
+        _v10: true,
+        remarks: `Dummy lead record v10 ${i + 1}`,
         timestamp: new Date().toISOString(),
         addedBy: i % 2 === 0 ? 'Admin User' : 'Employee 1'
       };
@@ -81,9 +93,9 @@ const getLeads = () => {
       if (isHistory) {
         lead.isFollowedUp = true;
         lead.followUpTimestamp = new Date().toISOString();
-        lead.sampleWODate = dateObj.toISOString().split('T')[0];
         lead.sampleWOHandoverDate = compDateObj.toISOString().split('T')[0];
         lead.expectedCompletionDate = compDateObj.toISOString().split('T')[0];
+        lead.actualCompletionDate = compDateObj.toISOString().split('T')[0];
         lead.dispatchSentDate = compDateObj.toISOString().split('T')[0];
       }
 
@@ -106,10 +118,31 @@ const saveLead = (lead) => {
   localStorage.setItem('pcb_leads', JSON.stringify(leads));
 };
 
+const ALL_COLUMNS = [
+  { id: 'buyerCoder', label: 'Buyer Code' },
+  { id: 'receiptDate', label: 'Enquiry Receipt Date' },
+  { id: 'productName', label: 'Description of Enquiry' },
+  { id: 'type', label: 'Type' },
+  { id: 'requirementDate', label: 'Requirement Date' },
+  { id: 'sampleWONo', label: 'Sample W/O No' },
+  { id: 'sampleWODate', label: 'Sample W/O Date' },
+  { id: 'qty', label: 'Qty' },
+  { id: 'sampleWOHandoverDate', label: 'Handover Date (NPD)' },
+  { id: 'expectedCompletionDate', label: 'Expected Completion Date' },
+  { id: 'actualCompletionDate', label: 'Actual Completion Date' },
+  { id: 'dispatchSentDate', label: 'Dispatch/Sent/Close Date' },
+  { id: 'remarks', label: 'Remarks' },
+  { id: 'addedBy', label: 'Added By' }
+];
+
 export default function SampleManagement() {
   const [leads, setLeads] = useState(getLeads());
   const [showFormModal, setShowFormModal] = useState(false);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
+  const [showColumnDropdown, setShowColumnDropdown] = useState(false);
+  const [visibleColumns, setVisibleColumns] = useState(
+    ALL_COLUMNS.reduce((acc, col) => ({ ...acc, [col.id]: true }), {})
+  );
   const [filters, setFilters] = useState({
     fromDate: '',
     toDate: '',
@@ -119,9 +152,9 @@ export default function SampleManagement() {
   const [showFollowUpModal, setShowFollowUpModal] = useState(false);
   const [selectedLead, setSelectedLead] = useState(null);
   const [followUpFormData, setFollowUpFormData] = useState({
-    sampleWODate: '',
     sampleWOHandoverDate: '',
     expectedCompletionDate: '',
+    actualCompletionDate: '',
     dispatchSentDate: ''
   });
 
@@ -199,9 +232,9 @@ export default function SampleManagement() {
   const handleOpenFollowUp = (lead) => {
     setSelectedLead(lead);
     setFollowUpFormData({
-      sampleWODate: lead.sampleWODate || '',
       sampleWOHandoverDate: lead.sampleWOHandoverDate || '',
       expectedCompletionDate: lead.expectedCompletionDate || '',
+      actualCompletionDate: lead.actualCompletionDate || '',
       dispatchSentDate: lead.dispatchSentDate || ''
     });
     setShowFollowUpModal(true);
@@ -221,7 +254,7 @@ export default function SampleManagement() {
     saveLead(updatedLead);
     setLeads(getLeads());
     setShowFollowUpModal(false);
-    toast.success(`Follow up for ${selectedLead.sn} saved successfully!`);
+    toast.success(`Follow up for ${selectedLead.sampleWONo} saved successfully!`);
   };
 
   const handleSaveLead = (e) => {
@@ -244,6 +277,23 @@ export default function SampleManagement() {
     toast.success('Lead added successfully!');
   };
 
+  const getRowColorClass = (reqDateStr) => {
+    if (!reqDateStr) return 'bg-white hover:bg-gray-50 border-gray-200';
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const reqDate = new Date(reqDateStr);
+    reqDate.setHours(0, 0, 0, 0);
+    
+    const diffTime = reqDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays < 0) return 'bg-red-200 hover:bg-red-300 border-red-300';
+    if (diffDays === 0) return 'bg-green-200 hover:bg-green-300 border-green-300';
+    if (diffDays > 0 && diffDays <= 5) return 'bg-orange-200 hover:bg-orange-300 border-orange-300';
+    
+    return 'bg-white hover:bg-gray-50 border-gray-200';
+  };
+
   return (
     <div className="p-0 sm:p-2 md:p-6 space-y-2 md:space-y-6 flex flex-col h-full min-h-0">
       
@@ -259,7 +309,7 @@ export default function SampleManagement() {
               : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'
           }`}
         >
-          Pending
+          Pending ({leads.filter(l => !l.dispatchSentDate).length})
         </button>
         <button
           onClick={() => setActiveTab('history')}
@@ -269,7 +319,7 @@ export default function SampleManagement() {
               : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'
           }`}
         >
-          History
+          History ({leads.filter(l => !!l.dispatchSentDate).length})
         </button>
         
         {/* Search & Mobile Add & Filter */}
@@ -301,7 +351,49 @@ export default function SampleManagement() {
         </div>
 
         {/* Filters */}
-        <div className={`${showMobileFilters ? 'grid' : 'hidden'} lg:flex grid-cols-2 lg:flex-row gap-2 w-full lg:w-auto lg:flex-[4] items-center`}>
+        <div className={`${showMobileFilters ? 'grid' : 'hidden'} lg:flex grid-cols-2 lg:flex-row gap-2 w-full lg:w-auto lg:flex-[4] items-center relative`}>
+          {/* Column Visibility Dropdown */}
+          <div className="relative w-full lg:w-auto col-span-2 lg:col-span-1">
+            <button
+              onClick={() => setShowColumnDropdown(!showColumnDropdown)}
+              className="bg-white border border-gray-300 rounded-lg lg:rounded px-3 py-1.5 focus:outline-none focus:border-indigo-500 text-[11px] md:text-sm h-[32px] md:h-[38px] flex items-center justify-between w-full lg:w-48 text-gray-700 shadow-sm hover:bg-gray-50"
+            >
+              <span className="truncate">Visible Columns</span>
+              <span className="ml-2 text-[10px]">▼</span>
+            </button>
+            {showColumnDropdown && (
+              <div className="absolute top-[calc(100%+4px)] left-0 mt-1 w-full lg:w-56 bg-white border border-gray-200 rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto">
+                <div className="p-2 space-y-1">
+                  <label className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-50 rounded cursor-pointer border-b border-gray-100 mb-1 pb-2">
+                    <input
+                      type="checkbox"
+                      checked={Object.values(visibleColumns).every(Boolean)}
+                      onChange={(e) => {
+                        const isChecked = e.target.checked;
+                        setVisibleColumns(
+                          ALL_COLUMNS.reduce((acc, col) => ({ ...acc, [col.id]: isChecked }), {})
+                        );
+                      }}
+                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-xs font-semibold text-gray-700 select-none">Select All</span>
+                  </label>
+                  {ALL_COLUMNS.map(col => (
+                    <label key={col.id} className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-50 rounded cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={visibleColumns[col.id]}
+                        onChange={(e) => setVisibleColumns({ ...visibleColumns, [col.id]: e.target.checked })}
+                        className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span className="text-xs text-gray-700 select-none">{col.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
           <input
             type="text"
             placeholder="From Date"
@@ -440,6 +532,17 @@ export default function SampleManagement() {
                     />
                   </div>
 
+                  {/* Sample W/O Date */}
+                  <div>
+                    <label className="block text-[11px] md:text-sm font-medium text-gray-700 mb-0.5 md:mb-1">Sample W/O Date</label>
+                    <input
+                      type="date"
+                      value={formData.sampleWODate}
+                      onChange={(e) => setFormData({ ...formData, sampleWODate: e.target.value })}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-[11px] md:text-sm bg-white min-h-[30px] md:min-h-[38px]"
+                    />
+                  </div>
+
                   {/* Remarks */}
                   <div className="md:col-span-2">
                     <label className="block text-[11px] md:text-sm font-medium text-gray-700 mb-0.5 md:mb-1">Remarks</label>
@@ -512,6 +615,10 @@ export default function SampleManagement() {
                       <span className="block text-gray-400 mb-0.5 text-[9px] uppercase">Req Date</span>
                       <span className="font-medium text-gray-900">{formatDate(selectedLead.requirementDate)}</span>
                     </div>
+                    <div>
+                      <span className="block text-gray-400 mb-0.5 text-[9px] uppercase">Sample W/O Date</span>
+                      <span className="font-medium text-gray-900">{formatDate(selectedLead.sampleWODate)}</span>
+                    </div>
 
                     <div className="col-span-3 md:col-span-4 border-t border-gray-100 pt-2 mt-1">
                       <span className="block text-gray-400 mb-0.5 text-[9px] uppercase">Remarks</span>
@@ -525,16 +632,6 @@ export default function SampleManagement() {
                   <h3 className="text-xs font-semibold text-indigo-800 mb-3 border-b pb-1">Update Details</h3>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     
-                    <div>
-                      <label className="block text-[10px] md:text-xs font-medium text-gray-700 mb-0.5">Sample W/O Date</label>
-                      <input
-                        type="date"
-                        value={followUpFormData.sampleWODate}
-                        onChange={(e) => setFollowUpFormData({ ...followUpFormData, sampleWODate: e.target.value })}
-                        className="w-full border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-[11px] md:text-xs bg-white h-[30px] md:h-[34px]"
-                      />
-                    </div>
-
                     <div>
                       <label className="block text-[10px] md:text-xs font-medium text-gray-700 mb-0.5">Handover Date (NPD)</label>
                       <input
@@ -556,7 +653,17 @@ export default function SampleManagement() {
                     </div>
 
                     <div>
-                      <label className="block text-[10px] md:text-xs font-medium text-gray-700 mb-0.5">Dispatch/Sent/Close/Date</label>
+                      <label className="block text-[10px] md:text-xs font-medium text-gray-700 mb-0.5">Actual Completion Date</label>
+                      <input
+                        type="date"
+                        value={followUpFormData.actualCompletionDate}
+                        onChange={(e) => setFollowUpFormData({ ...followUpFormData, actualCompletionDate: e.target.value })}
+                        className="w-full border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-[11px] md:text-xs bg-white h-[30px] md:h-[34px]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] md:text-xs font-medium text-gray-700 mb-0.5">Dispatch/Sent/Close Date</label>
                       <input
                         type="date"
                         value={followUpFormData.dispatchSentDate}
@@ -587,69 +694,86 @@ export default function SampleManagement() {
         {/* Mobile View: Cards */}
         <div className="md:hidden flex flex-col gap-2 p-2 overflow-y-auto flex-1 bg-slate-50/50 pb-2">
           {paginatedLeads.map((lead) => (
-            <div key={lead.id} className="bg-white rounded-lg border border-indigo-50 shadow-[0_2px_10px_-4px_rgba(79,70,229,0.1)] p-2.5 relative flex flex-col gap-2 transition-all">
-              <div className="flex justify-between items-start border-b border-slate-100 pb-2">
+            <div key={lead.id} className={`rounded-lg border shadow-[0_2px_10px_-4px_rgba(79,70,229,0.1)] p-2.5 relative flex flex-col gap-2 transition-all ${getRowColorClass(lead.requirementDate)}`}>
+              <div className="flex justify-between items-start border-b border-black/10 pb-2">
                 <div>
-                  <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest block leading-none mb-1">{lead.sampleWONo}</span>
-                  <h3 className="font-bold text-gray-900 text-sm leading-tight">
-                    {lead.buyerCoder}
-                  </h3>
+                  {visibleColumns.sampleWONo && <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest block leading-none mb-1">{lead.sampleWONo}</span>}
+                  {visibleColumns.buyerCoder && <h3 className="font-bold text-gray-900 text-sm leading-tight">{lead.buyerCoder}</h3>}
                 </div>
                 <div className="text-right">
-                   <span className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase bg-blue-50 text-blue-700">
-                     Qty: {lead.qty}
-                   </span>
+                   {visibleColumns.qty && (
+                     <span className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase bg-blue-50 text-blue-700">
+                       Qty: {lead.qty}
+                     </span>
+                   )}
                 </div>
               </div>
               
               <div className="grid grid-cols-2 gap-2 text-xs">
-                <div>
-                   <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Description of Enquiry</span>
-                   <span className="font-medium text-gray-800">{lead.productName || '-'}</span>
-                </div>
-                <div>
-                   <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Type</span>
-                   <span className="font-medium text-gray-800">{lead.type}</span>
-                </div>
-                <div>
-                   <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Req Date</span>
-                   <span className="font-medium text-gray-800">{formatDate(lead.requirementDate)}</span>
-                </div>
-                <div>
-                   <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Receipt Date</span>
-                   <span className="font-medium text-gray-800">{formatDate(lead.receiptDate)}</span>
-                </div>
-                <div>
-                   <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Added By</span>
-                   <span className="font-medium text-indigo-600">{lead.addedBy || '-'}</span>
-                </div>
+                {visibleColumns.productName && (
+                  <div>
+                     <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Description of Enquiry</span>
+                     <span className="font-medium text-gray-800">{lead.productName || '-'}</span>
+                  </div>
+                )}
+                {visibleColumns.type && (
+                  <div>
+                     <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Type</span>
+                     <span className="font-medium text-gray-800">{lead.type}</span>
+                  </div>
+                )}
+                {visibleColumns.requirementDate && (
+                  <div>
+                     <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Req Date</span>
+                     <span className="font-medium text-gray-800">{formatDate(lead.requirementDate)}</span>
+                  </div>
+                )}
+                {visibleColumns.receiptDate && (
+                  <div>
+                     <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Receipt Date</span>
+                     <span className="font-medium text-gray-800">{formatDate(lead.receiptDate)}</span>
+                  </div>
+                )}
+                {visibleColumns.addedBy && (
+                  <div>
+                     <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Added By</span>
+                     <span className="font-medium text-indigo-600">{lead.addedBy || '-'}</span>
+                  </div>
+                )}
 
-                {activeTab === 'history' && (
-                  <>
-                    <div>
-                      <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Sample W/O Date</span>
-                      <span className="font-medium text-gray-800">{formatDate(lead.sampleWODate)}</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Handover Date</span>
-                      <span className="font-medium text-gray-800">{formatDate(lead.sampleWOHandoverDate)}</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Expected Comp.</span>
-                      <span className="font-medium text-gray-800">{formatDate(lead.expectedCompletionDate)}</span>
-                    </div>
-                  </>
+                {visibleColumns.sampleWODate && (
+                  <div>
+                     <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Sample W/O Date</span>
+                     <span className="font-medium text-gray-800">{formatDate(lead.sampleWODate)}</span>
+                  </div>
+                )}
+                {visibleColumns.sampleWOHandoverDate && (
+                  <div>
+                    <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Handover Date</span>
+                    <span className="font-medium text-gray-800">{formatDate(lead.sampleWOHandoverDate)}</span>
+                  </div>
+                )}
+                {visibleColumns.expectedCompletionDate && (
+                  <div>
+                    <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Expected Comp.</span>
+                    <span className="font-medium text-gray-800">{formatDate(lead.expectedCompletionDate)}</span>
+                  </div>
+                )}
+                {visibleColumns.actualCompletionDate && (
+                  <div>
+                    <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Actual Comp.</span>
+                    <span className="font-medium text-gray-800">{formatDate(lead.actualCompletionDate)}</span>
+                  </div>
+                )}
+                {visibleColumns.dispatchSentDate && (
+                  <div>
+                    <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Dispatch Date</span>
+                    <span className="font-medium text-gray-800">{formatDate(lead.dispatchSentDate)}</span>
+                  </div>
                 )}
               </div>
-              
-              {lead.sampleWODate && (
-                <div className="mt-1 pt-2 border-t border-gray-50 text-xs">
-                  <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Sample W/O Date</span>
-                  <span className="text-gray-700 font-medium">{formatDate(lead.sampleWODate)}</span>
-                </div>
-              )}
 
-              {lead.remarks && (
+              {visibleColumns.remarks && lead.remarks && (
                 <div className="mt-1 pt-2 border-t border-gray-50 text-xs">
                   <span className="text-gray-500 block text-[10px] uppercase tracking-wide">Remarks</span>
                   <span className="text-gray-700">{lead.remarks}</span>
@@ -682,29 +806,27 @@ export default function SampleManagement() {
             <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10 shadow-sm">
               <tr>
                 {activeTab === 'pending' && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 w-24 whitespace-nowrap">Action</th>}
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Sample W/O No</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Enquiry Receipt Date</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Added By</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Buyer Code</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Description of Enquiry</th>
-                <th className="px-4 py-3 text-center text-sm font-semibold text-gray-900 whitespace-nowrap">Qty</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Type</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Requirement Date</th>
+                {visibleColumns.buyerCoder && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Buyer Code</th>}
+                {visibleColumns.receiptDate && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Enquiry Receipt Date</th>}
+                {visibleColumns.productName && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Description of Enquiry</th>}
+                {visibleColumns.type && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Type</th>}
+                {visibleColumns.requirementDate && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Requirement Date</th>}
+                {visibleColumns.sampleWONo && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Sample W/O No</th>}
+                {visibleColumns.sampleWODate && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Sample W/O Date</th>}
+                {visibleColumns.qty && <th className="px-4 py-3 text-center text-sm font-semibold text-gray-900 whitespace-nowrap">Qty</th>}
 
-                {activeTab === 'history' && (
-                  <>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Sample W/O Date</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Handover Date (NPD)</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Expected Completion Date</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Dispatch/Sent/Close/Date</th>
-                  </>
-                )}
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 max-w-[200px]">Remarks</th>
+                {visibleColumns.sampleWOHandoverDate && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Handover Date (NPD)</th>}
+                {visibleColumns.expectedCompletionDate && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Expected Completion Date</th>}
+                {visibleColumns.actualCompletionDate && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Actual Completion Date</th>}
+                {visibleColumns.dispatchSentDate && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Dispatch/Sent/Close Date</th>}
+                
+                {visibleColumns.remarks && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 max-w-[200px]">Remarks</th>}
+                {visibleColumns.addedBy && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Added By</th>}
               </tr>
             </thead>
             <tbody>
               {paginatedLeads.map((lead) => (
-                <tr key={lead.id} className="border-b border-gray-200 hover:bg-gray-50 transition-colors">
+                <tr key={lead.id} className={`border-b transition-colors ${getRowColorClass(lead.requirementDate)}`}>
                   {activeTab === 'pending' && (
                     <td className="px-4 py-3 text-left">
                       <button
@@ -715,24 +837,22 @@ export default function SampleManagement() {
                       </button>
                     </td>
                   )}
-                  <td className="px-4 py-3 text-left text-sm text-indigo-600 font-bold">{lead.sampleWONo}</td>
-                  <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{formatDate(lead.receiptDate)}</td>
-                  <td className="px-4 py-3 text-left text-sm text-gray-700 font-semibold">{lead.addedBy || '-'}</td>
-                  <td className="px-4 py-3 text-left text-sm text-gray-900 font-medium">{lead.buyerCoder}</td>
-                  <td className="px-4 py-3 text-left text-sm text-gray-900">{lead.productName || '-'}</td>
-                  <td className="px-4 py-3 text-center text-sm font-semibold text-sky-700 bg-sky-50">{lead.qty}</td>
-                  <td className="px-4 py-3 text-left text-sm text-gray-700">{lead.type}</td>
-                  <td className="px-4 py-3 text-left text-sm text-gray-700">{formatDate(lead.requirementDate)}</td>
+                  {visibleColumns.buyerCoder && <td className="px-4 py-3 text-left text-sm text-gray-900 font-medium">{lead.buyerCoder}</td>}
+                  {visibleColumns.receiptDate && <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{formatDate(lead.receiptDate)}</td>}
+                  {visibleColumns.productName && <td className="px-4 py-3 text-left text-sm text-gray-900">{lead.productName || '-'}</td>}
+                  {visibleColumns.type && <td className="px-4 py-3 text-left text-sm text-gray-700">{lead.type}</td>}
+                  {visibleColumns.requirementDate && <td className="px-4 py-3 text-left text-sm text-gray-700">{formatDate(lead.requirementDate)}</td>}
+                  {visibleColumns.sampleWONo && <td className="px-4 py-3 text-left text-sm text-indigo-600 font-bold">{lead.sampleWONo}</td>}
+                  {visibleColumns.sampleWODate && <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{lead.sampleWODate ? formatDate(lead.sampleWODate) : '-'}</td>}
+                  {visibleColumns.qty && <td className="px-4 py-3 text-center text-sm font-semibold text-sky-700 bg-sky-50">{lead.qty}</td>}
 
-                  {activeTab === 'history' && (
-                    <>
-                      <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{lead.sampleWODate ? formatDate(lead.sampleWODate) : '-'}</td>
-                      <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{formatDate(lead.sampleWOHandoverDate)}</td>
-                      <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{formatDate(lead.expectedCompletionDate)}</td>
-                      <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{formatDate(lead.dispatchSentDate)}</td>
-                    </>
-                  )}
-                  <td className="px-4 py-3 text-left text-sm text-gray-500 max-w-[200px] truncate">{lead.remarks || '-'}</td>
+                  {visibleColumns.sampleWOHandoverDate && <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{formatDate(lead.sampleWOHandoverDate)}</td>}
+                  {visibleColumns.expectedCompletionDate && <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{formatDate(lead.expectedCompletionDate)}</td>}
+                  {visibleColumns.actualCompletionDate && <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{formatDate(lead.actualCompletionDate)}</td>}
+                  {visibleColumns.dispatchSentDate && <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{formatDate(lead.dispatchSentDate)}</td>}
+
+                  {visibleColumns.remarks && <td className="px-4 py-3 text-left text-sm text-gray-500 max-w-[200px] truncate">{lead.remarks || '-'}</td>}
+                  {visibleColumns.addedBy && <td className="px-4 py-3 text-left text-sm text-gray-700 font-semibold">{lead.addedBy || '-'}</td>}
                 </tr>
               ))}
             </tbody>

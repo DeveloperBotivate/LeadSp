@@ -2,8 +2,15 @@ import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { Trash2, Edit2, Plus, Search, ChevronLeft, ChevronRight, X, User as UserIcon } from 'lucide-react';
 const DEFAULT_USERS = [
-  { id: 'admin', name: 'Admin User', password: 'admin123', role: 'ADMIN', accessPages: [] },
-  { id: 'user', name: 'Employee 1', password: 'user123', role: 'USER', accessPages: [] }
+  { id: 'admin', name: 'Admin User', password: 'admin123', role: 'ADMIN', accessPages: ['/', '/sample-management', '/bulk-order', '/settings'] },
+  { id: 'user', name: 'Employee 1', password: 'user123', role: 'USER', accessPages: ['/', '/sample-management', '/bulk-order'] }
+];
+
+const AVAILABLE_PAGES = [
+  { path: '/', label: 'Dashboard' },
+  { path: '/sample-management', label: 'Sample Management' },
+  { path: '/bulk-order', label: 'Bulk Production Order' },
+  { path: '/settings', label: 'Settings' }
 ];
 const getUsers = () => {
   const users = JSON.parse(localStorage.getItem('pcb_users'));
@@ -28,7 +35,8 @@ export default function Settings() {
     name: '',
     id: '',
     password: '',
-    role: 'USER'
+    role: 'USER',
+    accessPages: ['/', '/sample-management', '/bulk-order']
   });
 
   useEffect(() => {
@@ -56,13 +64,13 @@ export default function Settings() {
 
   const handleOpenAddModal = () => {
     setEditingUserId(null);
-    setFormData({ name: '', id: '', password: '', role: 'USER' });
+    setFormData({ name: '', id: '', password: '', role: 'USER', accessPages: ['/', '/sample-management', '/bulk-order'] });
     setShowFormModal(true);
   };
 
   const handleEditUser = (user) => {
     setEditingUserId(user.id);
-    setFormData({ ...user });
+    setFormData({ ...user, accessPages: user.accessPages || ['/', '/sample-management', '/bulk-order'] });
     setShowFormModal(true);
   };
 
@@ -198,6 +206,28 @@ export default function Settings() {
                       <option value="ADMIN">ADMIN</option>
                     </select>
                   </div>
+                  {/* Page Access */}
+                  <div className="md:col-span-2">
+                    <label className="block text-[11px] md:text-sm font-medium text-gray-700 mb-1 md:mb-2">Page Access</label>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                      {AVAILABLE_PAGES.map(page => (
+                        <label key={page.path} className="flex items-center gap-2 cursor-pointer">
+                          <input 
+                            type="checkbox" 
+                            checked={(formData.accessPages || []).includes(page.path)}
+                            onChange={(e) => {
+                              const newAccess = e.target.checked 
+                                ? [...(formData.accessPages || []), page.path]
+                                : (formData.accessPages || []).filter(p => p !== page.path);
+                              setFormData({ ...formData, accessPages: newAccess });
+                            }}
+                            className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                          />
+                          <span className="text-sm text-gray-800 font-medium">{page.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
                 </div>
 
                 <div className="flex gap-2 md:gap-3 pt-2">
@@ -239,6 +269,9 @@ export default function Settings() {
                    </span>
                 </div>
               </div>
+              <div className="px-1 py-1">
+                <p className="text-[10px] text-gray-500 font-medium">Page Access: <span className="text-gray-800 font-bold">{(user.accessPages || []).length} pages</span></p>
+              </div>
               <div className="flex gap-1.5 mt-1">
                 <button
                   onClick={() => handleEditUser(user)}
@@ -272,6 +305,7 @@ export default function Settings() {
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Name</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">ID</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Role</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Page Access</th>
                 <th className="px-4 py-3 text-center text-sm font-semibold text-gray-900">Actions</th>
               </tr>
             </thead>
@@ -285,6 +319,9 @@ export default function Settings() {
                     <span className={`px-2 py-1 rounded text-xs font-bold uppercase tracking-wider ${user.role === 'ADMIN' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}`}>
                       {user.role}
                     </span>
+                  </td>
+                  <td className="px-4 py-3 text-left text-[11px] text-gray-600 max-w-[200px] truncate" title={(user.accessPages || []).map(p => AVAILABLE_PAGES.find(ap => ap.path === p)?.label).filter(Boolean).join(', ')}>
+                    {(user.accessPages || []).map(p => AVAILABLE_PAGES.find(ap => ap.path === p)?.label).filter(Boolean).join(', ') || 'None'}
                   </td>
                   <td className="px-4 py-3 flex gap-2 justify-center">
                     <button
