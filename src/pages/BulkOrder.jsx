@@ -7,14 +7,18 @@ import DraggableScroll from '../components/DraggableScroll';
 // LOCAL STORAGE & DUMMY DATA LOGIC
 // ==========================================
 const getTodayDate = () => {
-  return new Date().toISOString().split('T')[0];
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
 const getLeads = () => {
   let leads = JSON.parse(localStorage.getItem('pcb_planning')) || [];
 
   // Aggressively wipe old cache due to data model changes
-  if (leads.length > 0 && !leads[0]._v8) {
+  if (leads.length > 0 && !leads[0]._v9) {
     leads = [];
     localStorage.removeItem('pcb_planning');
   }
@@ -61,7 +65,7 @@ const getLeads = () => {
       addedBy: leadCounter % 2 === 0 ? 'Admin User' : 'Employee 1',
       currentStage: stg,
       _isDummy: true,
-      _v8: true,
+      _v9: true,
       isHistory: leadCounter % 2 === 0, // Mock half as History
       // Mock history data if it is history
       ...(leadCounter % 2 === 0 ? {
@@ -80,23 +84,31 @@ const getLeads = () => {
       } : {})
     };
 
-    for (let s = 1; s <= stg; s++) {
-      lead[`stage${s}`] = {
-        actualDate: compDateObj.toISOString().split('T')[0],
-        status: s < stg ? 'Completed' : (leadCounter % 2 === 0 ? 'Completed' : 'Delayed'),
-        remarks: `Stage ${s} completed successfully`,
-        timestamp: new Date().toISOString()
-      };
+    const stages = [
+      'HANDOVER',
+      'LEATHER IN-HOUSE',
+      'MATERIALS IN-HOUSE',
+      'PACKING MATERIALS IN-HOUSE',
+      'CUTTING COMPLETION',
+      'FABRICATION COMPLETION',
+      'QA COMPLETED',
+      'Planned Shipment'
+    ];
+    
+    lead.stages = stages.map((stageName, idx) => {
+      const s = idx + 1;
+      const isCompleted = lead.isHistory || s < stg;
+      
+      const pDate = new Date(dateObj.getTime() + (s * 86400000 * 2));
+      const aDate = new Date(pDate.getTime() + (leadCounter % 3 === 0 ? 86400000 : 0)); // Some delayed, some on time
 
-      if (s === 8) {
-        lead[`stage${s}`] = {
-          actualDate: compDateObj.toISOString().split('T')[0],
-          dayNeed: `Need ${i + 1} days`,
-          remarks: `Stage ${s} completed successfully`,
-          timestamp: new Date().toISOString()
-        };
-      }
-    }
+      return {
+        name: stageName,
+        plannedDate: pDate.toISOString().split('T')[0],
+        actualDate: isCompleted ? aDate.toISOString().split('T')[0] : '',
+        remarks: isCompleted ? `Dummy remarks for ${stageName}` : ''
+      };
+    });
 
     dummyLeads.push(lead);
   }
@@ -118,7 +130,13 @@ const saveLead = (updatedLead) => {
 };
 const formatDate = (dateString) => {
   if (!dateString) return '-';
-  const date = new Date(dateString);
+  let date;
+  if (typeof dateString === 'string' && dateString.length === 10 && dateString.includes('-')) {
+    const [y, m, d] = dateString.split('-');
+    date = new Date(y, m - 1, d);
+  } else {
+    date = new Date(dateString);
+  }
   return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
@@ -196,6 +214,31 @@ export default function BulkOrder() {
 
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(15);
+
+  const getStageColorClass = (plannedDate, actualDate, isHistory) => {
+    if (actualDate || isHistory) {
+      return "bg-green-200 text-green-800 font-bold";
+    }
+    if (!plannedDate) return "text-gray-700";
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const pDate = new Date(plannedDate);
+    pDate.setHours(0, 0, 0, 0);
+
+    const diffDays = Math.ceil((pDate - today) / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) {
+      return "bg-red-200 text-red-800 font-bold";
+    }
+    if (diffDays === 0) {
+      return "bg-green-200 text-green-800 font-bold";
+    }
+    if (diffDays > 0 && diffDays <= 5) {
+      return "bg-orange-200 text-orange-800 font-bold";
+    }
+    return "text-gray-700";
+  };
 
   const [formData, setFormData] = useState({
     buyer: '',
@@ -661,15 +704,15 @@ export default function BulkOrder() {
                   <div><span className="text-gray-500 block text-[10px] uppercase">W/O Received Date</span><span className="font-medium">{formatDate(selectedLead.wResDate)}</span></div>
                   <div><span className="text-gray-500 block text-[10px] uppercase">W/O Date</span><span className="font-medium">{formatDate(selectedLead.woDate)}</span></div>
                   <div>
-                    <span className="text-gray-500 flex items-center gap-1.5 text-[10px] uppercase">
+                    <span className="text-gray-500 flex items-center gap-2 text-[10px] uppercase h-[20px]">
                       W/O Shipment
                       {!isViewMode && currentUser?.role === 'ADMIN' && !isEditingShipmentDate && (
                         <button 
                           type="button" 
                           onClick={() => setIsEditingShipmentDate(true)}
-                          className="text-indigo-600 hover:text-indigo-800 underline text-[9px] lowercase font-semibold"
+                          className="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 px-1.5 py-0.5 rounded flex items-center gap-1 text-[9px] font-bold lowercase transition-colors"
                         >
-                          edit
+                          <Edit2 size={10} /> edit
                         </button>
                       )}
                     </span>
@@ -710,7 +753,7 @@ export default function BulkOrder() {
                               type="date"
                               value={stage.plannedDate}
                               disabled={isViewMode}
-                              max={selectedLead?.woDespatchDate}
+                              max={followUpFormData.woDespatchDate || selectedLead?.woDespatchDate}
                               onChange={(e) => {
                                 const newStages = [...followUpFormData.stages];
                                 newStages[index].plannedDate = e.target.value;
@@ -724,6 +767,7 @@ export default function BulkOrder() {
                               type="date"
                               value={stage.actualDate}
                               disabled={isViewMode}
+                              max={followUpFormData.woDespatchDate || selectedLead?.woDespatchDate}
                               onChange={(e) => {
                                 const newStages = [...followUpFormData.stages];
                                 newStages[index].actualDate = e.target.value;
@@ -777,7 +821,7 @@ export default function BulkOrder() {
         {/* Mobile View: Cards */}
         <div className="md:hidden flex flex-col gap-2 p-2 overflow-y-auto flex-1 bg-slate-50/50 pb-2">
           {paginatedLeads.map((lead) => (
-            <div key={lead.id} className={`${getShipmentDisplay(lead).rowClass.split(' ')[0]} rounded-lg border border-indigo-50 shadow-[0_2px_10px_-4px_rgba(79,70,229,0.1)] p-2.5 relative flex flex-col gap-2 transition-all`}>
+            <div key={lead.id} className={`bg-white rounded-lg border border-indigo-50 shadow-[0_2px_10px_-4px_rgba(79,70,229,0.1)] p-2.5 relative flex flex-col gap-2 transition-all`}>
               <div className="flex justify-between items-start border-b border-black/10 pb-2">
                 <div>
                   {visibleColumns.woNo && <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest block leading-none mb-1">{lead.woNo}</span>}
@@ -849,7 +893,7 @@ export default function BulkOrder() {
                       <h4 className="font-bold text-indigo-800 mb-1 border-b border-indigo-100 pb-1">{stage}</h4>
                       <div className="grid grid-cols-2 gap-1 mt-1">
                         {showPlanned && (
-                          <div><span className="text-gray-500 text-[9px] uppercase block">Planned</span><span>{formatDate(stageData.plannedDate)}</span></div>
+                          <div><span className="text-gray-500 text-[9px] uppercase block">Planned</span><span className={`px-1 rounded ${getStageColorClass(stageData.plannedDate, stageData.actualDate, lead.isHistory)}`}>{formatDate(stageData.plannedDate)}</span></div>
                         )}
                         {showActual && (
                           <div><span className="text-gray-500 text-[9px] uppercase block">Actual</span><span>{formatDate(stageData.actualDate)}</span></div>
@@ -892,14 +936,14 @@ export default function BulkOrder() {
                 {visibleColumns.wResDate && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">W/O Received Date</th>}
                 {visibleColumns.woDespatchDate && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">W/O Shipment Date</th>}
                 {visibleColumns.qty && <th className="px-4 py-3 text-center text-sm font-semibold text-gray-900 whitespace-nowrap">Qty</th>}
-                {visibleColumns.remarks && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap max-w-[200px]">Remarks</th>}
+                {visibleColumns.remarks && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">Remarks</th>}
 
                 {STAGES_LIST.map(stage => (
                   <React.Fragment key={stage}>
                     {visibleColumns[`${stage}_plannedDate`] && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap bg-indigo-50/30">{stage} Planned Date</th>}
                     {visibleColumns[`${stage}_actualDate`] && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap bg-indigo-50/30">{stage} Actual Date</th>}
                     {visibleColumns[`${stage}_timeDelay`] && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap bg-indigo-50/30">{stage} Time Delay</th>}
-                    {visibleColumns[`${stage}_remarks`] && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap bg-indigo-50/30 max-w-[200px]">{stage} Remarks</th>}
+                    {visibleColumns[`${stage}_remarks`] && <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap bg-indigo-50/30">{stage} Remarks</th>}
                   </React.Fragment>
                 ))}
 
@@ -915,7 +959,7 @@ export default function BulkOrder() {
                 };
 
                 return (
-                  <tr key={lead.id} className={`border-b border-gray-200 transition-colors ${getShipmentDisplay(lead).rowClass}`}>
+                  <tr key={lead.id} className={`border-b border-gray-200 hover:bg-gray-50 transition-colors bg-white`}>
                     {activeTab === 'pending' && (
                       <td className="px-4 py-3 text-left text-sm whitespace-nowrap bg-white/50">
                         <button onClick={() => handleOpenFollowUp(lead)} className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-md text-[11px] font-bold uppercase hover:bg-indigo-100 transition shadow-sm border border-indigo-200">
@@ -935,7 +979,7 @@ export default function BulkOrder() {
                       const stageData = getStageData(stage);
                       return (
                         <React.Fragment key={stage}>
-                          {visibleColumns[`${stage}_plannedDate`] && <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{formatDate(stageData.plannedDate)}</td>}
+                          {visibleColumns[`${stage}_plannedDate`] && <td className={`px-4 py-3 text-left text-sm whitespace-nowrap ${getStageColorClass(stageData.plannedDate, stageData.actualDate, lead.isHistory)}`}>{formatDate(stageData.plannedDate)}</td>}
                           {visibleColumns[`${stage}_actualDate`] && <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{formatDate(stageData.actualDate)}</td>}
                           {visibleColumns[`${stage}_timeDelay`] && <td className="px-4 py-3 text-left text-sm text-gray-700 whitespace-nowrap">{getTimeDelay(stageData.plannedDate, stageData.actualDate)}</td>}
                           {visibleColumns[`${stage}_remarks`] && <td className="px-4 py-3 text-left text-sm text-gray-500 max-w-[200px] truncate">{stageData.remarks || '-'}</td>}

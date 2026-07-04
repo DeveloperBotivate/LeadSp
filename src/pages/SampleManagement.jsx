@@ -4,12 +4,22 @@ import { Plus, Search, ChevronLeft, ChevronRight, X, Calendar, Edit2, Trash2, Fi
 import DraggableScroll from '../components/DraggableScroll';
 const formatDate = (dateString) => {
   if (!dateString) return '-';
-  const date = new Date(dateString);
+  let date;
+  if (typeof dateString === 'string' && dateString.length === 10 && dateString.includes('-')) {
+    const [y, m, d] = dateString.split('-');
+    date = new Date(y, m - 1, d);
+  } else {
+    date = new Date(dateString);
+  }
   return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
 const getTodayDate = () => {
-  return new Date().toISOString().split('T')[0];
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
 const getLeads = () => {
@@ -451,6 +461,17 @@ export default function SampleManagement() {
                     />
                   </div>
 
+                  {/* Sample W/O Date */}
+                  <div>
+                    <label className="block text-[11px] md:text-sm font-medium text-gray-700 mb-0.5 md:mb-1">Sample W/O Date</label>
+                    <input
+                      type="date"
+                      value={formData.sampleWODate}
+                      onChange={(e) => setFormData({ ...formData, sampleWODate: e.target.value })}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-[11px] md:text-sm bg-white min-h-[30px] md:min-h-[38px]"
+                    />
+                  </div>
+
                   {/* Enquiry Receipt Date */}
                   <div>
                     <label className="block text-[11px] md:text-sm font-medium text-gray-700 mb-0.5 md:mb-1">Enquiry Receipt Date *</label>
@@ -529,17 +550,6 @@ export default function SampleManagement() {
                       onChange={(e) => setFormData({ ...formData, requirementDate: e.target.value })}
                       className="w-full border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-[11px] md:text-sm bg-white min-h-[30px] md:min-h-[38px]"
                       required
-                    />
-                  </div>
-
-                  {/* Sample W/O Date */}
-                  <div>
-                    <label className="block text-[11px] md:text-sm font-medium text-gray-700 mb-0.5 md:mb-1">Sample W/O Date</label>
-                    <input
-                      type="date"
-                      value={formData.sampleWODate}
-                      onChange={(e) => setFormData({ ...formData, sampleWODate: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-[11px] md:text-sm bg-white min-h-[30px] md:min-h-[38px]"
                     />
                   </div>
 

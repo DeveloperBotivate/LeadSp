@@ -5,7 +5,13 @@ import DonutChart from '../components/DonutChart';
 
 const formatDate = (dateStr) => {
   if (!dateStr) return '-';
-  const date = new Date(dateStr);
+  let date;
+  if (typeof dateStr === 'string' && dateStr.length === 10 && dateStr.includes('-')) {
+    const [y, m, d] = dateStr.split('-');
+    date = new Date(y, m - 1, d);
+  } else {
+    date = new Date(dateStr);
+  }
   const day = String(date.getDate()).padStart(2, '0');
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const year = date.getFullYear();
@@ -24,7 +30,11 @@ const STAGES_LIST = [
 ];
 
 const getTodayDate = () => {
-  return new Date().toISOString().split('T')[0];
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
 const isDateInRange = (date, fromDate, toDate) => {
